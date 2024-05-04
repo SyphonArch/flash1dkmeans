@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "flash1dkmeans"
+version = "0.0.1"
+authors = [
+  { name="Jake Hyun", email="jake.hyun@hotmail.com" },
+]
+description = "An optimized K-means implementation for the one-dimensional case."
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "numba~=0.59.1",
+    "numpy~=1.26.4"
+]
+
+
+[project.urls]
+Homepage = "https://github.com/SyphonArch/flash1dkmeans"
+Issues = "https://github.com/SyphonArch/flash1dkmeans/issues"
