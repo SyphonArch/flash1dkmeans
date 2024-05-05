@@ -67,6 +67,16 @@ centroids, labels = kmeans_1d(
 
 ### Even More Options
 The underlying Numba-accelerated function `_sorted_kmeans_1d` can be used directly for more control.
+
+This is useful when the algorithm is run multiple times on different segments of the data,
+or to use within another Numba-accelerated function.
+
+The list of available functions are as follows:
+- `_sorted_kmeans_1d`
+- `_sorted_kmeans_1d_unweighted`
+- `_sorted_kmeans_1d_prefix_sums`
+- `_sorted_kmeans_1d_prefix_sums_unweighted`
+
 ```python
 from flash1dkmeans import _sorted_kmeans_1d_prefix_sums
 import numpy as np
