@@ -3,41 +3,75 @@ Optimized kmeans for 1D data with n clusters.
 
 This module contains an optimized kmeans for 1D data with n clusters.
 
-There are two functions intended to be used outside of this module:
+The following is the main function:
 - flash_1d_kmeans_n_cluster
-- flash_1d_kmeans_n_cluster_unweighted
-
-The first function is a weighted version of the kmeans algorithm for 1D data with n clusters.
-The second function is an unweighted version of the kmeans algorithm for 1D data with n clusters.
 
 Inputs must be sorted in ascending order, no default values are provided, and no error checking is done.
 This is because this module is intended to be used internally.
 """
 
 import numba
-from .utils import query_prefix_sum
+from .utils import query_prefix_sum, query_weights_prefix_sum
 import numpy as np
+from .config import ARRAY_INDEX_DTYPE
 
 
 @numba.njit(cache=True)
 def flash_1d_kmeans_n_cluster(
-        X, weights_prefix_sum, weighted_X_prefix_sum,
-        weighted_X_squared_prefix_sum,
+        X,
         n_clusters,
         max_iter,
+        is_weighted,
+        weights_prefix_sum, weighted_X_prefix_sum,
+        weighted_X_squared_prefix_sum,
+        n_local_trials,  # This value is 2 + int(np.log(n_clusters)) in sklearn
         start_idx,
         stop_idx,
-        n_local_trials,  # This value is 2 + int(np.log(n_clusters)) in sklearn
 ):
     """An optimized kmeans for 1D data with n clusters.
+    Exploits the fact that the data is 1D to optimize the calculations.
+    Time complexity: O(n_clusters * log(n_clusters) * log(len(X)) * n_clusters + max_iter * log(len(X)) * n_clusters)
+                      = O(k ^ 2 * log(k) * log(n) + max_iter * log(n) * k)
 
+    Args:
+        X: np.ndarray
+            The input data. Should be sorted in ascending order.
+        n_clusters: int
+            The number of clusters to generate
+        max_iter: int
+            The maximum number of iterations to run
+        is_weighted: bool
+            Whether the data is weighted. If True, the weighted versions of the arrays should be provided.
+        weights_prefix_sum: np.ndarray
+            The prefix sum of the weights. Should be None if the data is unweighted.
+        weighted_X_prefix_sum: np.ndarray
+            The prefix sum of the weighted X
+        weighted_X_squared_prefix_sum: np.ndarray
+            The prefix sum of the weighted X squared
+        n_local_trials: int
+            The number of local trials to run when choosing the next centroid
+        start_idx: int
+            The start index of the range to consider
+        stop_idx: int
+            The stop index of the range to consider
+
+    Returns:
+        centroids: np.ndarray
+            The centroids of the clusters
+        cluster_borders: np.ndarray
+            The borders of the clusters
     """
-    cluster_borders = np.empty(n_clusters + 1, dtype=np.int32)
+    if is_weighted:
+        assert weights_prefix_sum is not None, "weights_prefix_sum must be provided for weighted data"
+    else:
+        assert weights_prefix_sum is None, "weights_prefix_sum must not be provided for unweighted data"
+
+    cluster_borders = np.empty(n_clusters + 1, dtype=ARRAY_INDEX_DTYPE)
     cluster_borders[0] = start_idx
     cluster_borders[-1] = stop_idx
 
     centroids = _kmeans_plusplus(
-        X, n_clusters,
+        X, n_clusters, is_weighted,
         weights_prefix_sum, weighted_X_prefix_sum,
         weighted_X_squared_prefix_sum,
         n_local_trials, start_idx, stop_idx,
@@ -62,7 +96,7 @@ def flash_1d_kmeans_n_cluster(
                 continue
 
             cluster_weighted_X_sum = query_prefix_sum(weighted_X_prefix_sum, cluster_start, cluster_end)
-            cluster_weight_sum = query_prefix_sum(weights_prefix_sum, cluster_start, cluster_end)
+            cluster_weight_sum = query_weights_prefix_sum(is_weighted, weights_prefix_sum, cluster_start, cluster_end)
 
             if cluster_weight_sum == 0:
                 # if the sum of the weights is zero, we set the centroid to the mean of the cluster
@@ -126,7 +160,7 @@ def centroids_to_cluster_borders(X, sorted_centroids, start_idx, stop_idx):
         np.ndarray: The cluster borders
     """
     midpoints = (sorted_centroids[:-1] + sorted_centroids[1:]) / 2
-    cluster_borders = np.empty(len(sorted_centroids) + 1, dtype=np.int32)
+    cluster_borders = np.empty(len(sorted_centroids) + 1, dtype=ARRAY_INDEX_DTYPE)
     cluster_borders[0] = start_idx
     cluster_borders[-1] = stop_idx
     cluster_borders[1:-1] = np.searchsorted(X[start_idx:stop_idx], midpoints) + start_idx
@@ -135,7 +169,7 @@ def centroids_to_cluster_borders(X, sorted_centroids, start_idx, stop_idx):
 
 @numba.njit(cache=True)
 def _calculate_inertia(sorted_centroids, centroid_ranges,
-                       weights_prefix_sum, weighted_X_prefix_sum, weighted_X_squared_prefix_sum,
+                       is_weighted, weights_prefix_sum, weighted_X_prefix_sum, weighted_X_squared_prefix_sum,
                        stop_idx):
     """Calculates the inertia of the clusters given the centroids.
     The inertia is the sum of the squared distances of each sample to the closest centroid.
@@ -146,8 +180,12 @@ def _calculate_inertia(sorted_centroids, centroid_ranges,
     Args:
         sorted_centroids: np.ndarray
             The centroids of the clusters
+        centroid_ranges: np.ndarray
+            The borders of the clusters
+        is_weighted: bool
+            Whether the data is weighted. If True, the weighted versions of the arrays should be provided.
         weights_prefix_sum: np.ndarray
-            The prefix sum of the weights
+            The prefix sum of the weights. Should be None if the data is unweighted.
         weighted_X_prefix_sum: np.ndarray
             The prefix sum of the weighted X
         weighted_X_squared_prefix_sum: np.ndarray
@@ -175,7 +213,7 @@ def _calculate_inertia(sorted_centroids, centroid_ranges,
 
         cluster_weighted_X_squared_sum = query_prefix_sum(weighted_X_squared_prefix_sum, start, end)
         cluster_weighted_X_sum = query_prefix_sum(weighted_X_prefix_sum, start, end)
-        cluster_weight_sum = query_prefix_sum(weights_prefix_sum, start, end)
+        cluster_weight_sum = query_weights_prefix_sum(is_weighted, weights_prefix_sum, start, end)
 
         inertia += (cluster_weighted_X_squared_sum - 2 * sorted_centroids[i] * cluster_weighted_X_sum +
                     sorted_centroids[i] ** 2 * cluster_weight_sum)
@@ -184,7 +222,8 @@ def _calculate_inertia(sorted_centroids, centroid_ranges,
 
 
 @numba.njit(cache=True)
-def _rand_choice_centroids(X, centroids, weights_prefix_sum, weighted_X_prefix_sum, weighted_X_squared_prefix_sum,
+def _rand_choice_centroids(X, centroids,
+                           is_weighted, weights_prefix_sum, weighted_X_prefix_sum, weighted_X_squared_prefix_sum,
                            sample_size, start_idx, stop_idx):
     """Randomly choose sample_size elements from X, weighted by the distance to the closest centroid.
     The weighted logic is implemented efficiently by utilizing the _calculate_inertia function.
@@ -196,8 +235,10 @@ def _rand_choice_centroids(X, centroids, weights_prefix_sum, weighted_X_prefix_s
             The input data. Should be sorted in ascending order.
         centroids: np.ndarray
             The centroids of the clusters
+        is_weighted: bool
+            Whether the data is weighted. If True, the weighted versions of the arrays should be provided.
         weights_prefix_sum: np.ndarray
-            The prefix sum of the weights
+            The prefix sum of the weights. Should be None if the data is unweighted.
         weighted_X_prefix_sum: np.ndarray
             The prefix sum of the weighted X
         weighted_X_squared_prefix_sum: np.ndarray
@@ -215,7 +256,7 @@ def _rand_choice_centroids(X, centroids, weights_prefix_sum, weighted_X_prefix_s
     sorted_centroids = np.sort(centroids)
     cluster_borders = centroids_to_cluster_borders(X, sorted_centroids, start_idx, stop_idx)
     total_inertia = _calculate_inertia(sorted_centroids, cluster_borders,
-                                       weights_prefix_sum, weighted_X_prefix_sum,
+                                       is_weighted, weights_prefix_sum, weighted_X_prefix_sum,
                                        weighted_X_squared_prefix_sum, stop_idx)
     selectors = np.random.random_sample(sample_size) * total_inertia
     results = np.empty(sample_size, dtype=centroids.dtype)
@@ -227,7 +268,7 @@ def _rand_choice_centroids(X, centroids, weights_prefix_sum, weighted_X_prefix_s
         while floor < ceiling:
             stop_idx_cand = (floor + ceiling) // 2
             inertia = _calculate_inertia(X, sorted_centroids, cluster_borders,
-                                         weights_prefix_sum, weighted_X_prefix_sum,
+                                         is_weighted, weights_prefix_sum, weighted_X_prefix_sum,
                                          weighted_X_squared_prefix_sum, stop_idx_cand)
             if inertia < selector:
                 floor = stop_idx_cand + 1
@@ -239,7 +280,8 @@ def _rand_choice_centroids(X, centroids, weights_prefix_sum, weighted_X_prefix_s
 
 
 @numba.njit(cache=True)
-def _kmeans_plusplus(X, n_clusters, weights_prefix_sum, weighted_X_prefix_sum, weighted_X_squared_prefix_sum,
+def _kmeans_plusplus(X, n_clusters,
+                     is_weighted, weights_prefix_sum, weighted_X_prefix_sum, weighted_X_squared_prefix_sum,
                      n_local_trials, start_idx, stop_idx):
     """An optimized version of the kmeans++ initialization algorithm for 1D data.
     The algorithm is optimized for 1D data and utilizes prefix sums for efficient calculations.
@@ -252,8 +294,10 @@ def _kmeans_plusplus(X, n_clusters, weights_prefix_sum, weighted_X_prefix_sum, w
             The input data
         n_clusters: int
             The number of clusters to choose
+        is_weighted: bool
+            Whether the data is weighted. If True, the weighted versions of the arrays should be provided.
         weights_prefix_sum: np.ndarray
-            The prefix sum of the weights
+            The prefix sum of the weights. Should be None if the data is unweighted.
         weighted_X_prefix_sum: np.ndarray
             The prefix sum of the weighted X
         weighted_X_squared_prefix_sum: np.ndarray
@@ -265,14 +309,20 @@ def _kmeans_plusplus(X, n_clusters, weights_prefix_sum, weighted_X_prefix_sum, w
     centroids = np.empty(n_clusters, dtype=X.dtype)
 
     # First centroid is chosen randomly according to sample_weight
-    centroids[0] = _rand_choice_prefix_sum(X, weights_prefix_sum, start_idx, stop_idx)
+    if is_weighted:
+        centroids[0] = _rand_choice_prefix_sum(X, weights_prefix_sum, start_idx, stop_idx)
+    else:
+        centroids[0] = X[np.random.randint(start_idx, stop_idx)]
 
     for c_id in range(1, n_clusters):
         # Choose the next centroid randomly according to the weighted distances
         # Sample n_local_trials candidates and choose the best one
-        centroid_candidates = _rand_choice_centroids(X, centroids[:c_id], weights_prefix_sum, weighted_X_prefix_sum,
-                                                     weighted_X_squared_prefix_sum, n_local_trials,
-                                                     start_idx, stop_idx)
+        centroid_candidates = _rand_choice_centroids(
+            X, centroids[:c_id],
+            is_weighted, weights_prefix_sum, weighted_X_prefix_sum,
+            weighted_X_squared_prefix_sum, n_local_trials,
+            start_idx, stop_idx
+        )
 
         best_inertia = np.inf
         best_centroid = None
@@ -281,7 +331,7 @@ def _kmeans_plusplus(X, n_clusters, weights_prefix_sum, weighted_X_prefix_sum, w
             sorted_centroids = np.sort(centroids[:c_id + 1])
             centroid_ranges = centroids_to_cluster_borders(X, sorted_centroids, start_idx, stop_idx)
             inertia = _calculate_inertia(sorted_centroids, centroid_ranges,
-                                         weights_prefix_sum, weighted_X_prefix_sum,
+                                         is_weighted, weights_prefix_sum, weighted_X_prefix_sum,
                                          weighted_X_squared_prefix_sum, stop_idx)
             if inertia < best_inertia:
                 best_inertia = inertia
