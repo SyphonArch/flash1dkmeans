@@ -121,3 +121,5 @@ where multiple 1D K-means instances are run in parallel for LLM quantization.
 
 However, the algorithm is general and can be used for any 1D K-means problem.
 
+I have proved the validity for the two cluster case - detailed version of the proof might be posted in the future.
+
