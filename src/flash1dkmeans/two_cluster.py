@@ -52,7 +52,8 @@ def flash_1d_kmeans_two_cluster(
 
     # If the sum of the sample weight in the range is 0, we call an unweighted version of the function
     if query_prefix_sum(sample_weight_prefix_sum, 0, len(X)) == 0:
-        return flash_1d_kmeans_two_cluster_unweighted(X)
+        X_prefix_sum = np.cumsum(X, dtype=np.float64)
+        return flash_1d_kmeans_two_cluster_unweighted(X, X_prefix_sum)
 
     # Check if there is only one nonzero sample weight
     total_weight = query_prefix_sum(sample_weight_prefix_sum, 0, len(X))
@@ -78,8 +79,8 @@ def flash_1d_kmeans_two_cluster(
     # We will do a search for the division point,
     # where we search for the optimum number of elements in the first cluster
     # We don't want empty clusters, so we set the floor and ceiling to 1 and len(X) - 1
-    floor = 0
-    ceiling = len(X)
+    floor = 1
+    ceiling = len(X) - 1
     left_centroid = None
     right_centroid = None
     division_point = None
@@ -129,7 +130,7 @@ def flash_1d_kmeans_two_cluster(
 
 
 @numba.njit(cache=True)
-def flash_1d_kmeans_two_cluster_unweighted(X):
+def flash_1d_kmeans_two_cluster_unweighted(X, X_prefix_sum):
     """Unweighted version of flash_1d_kmeans_two_cluster.
 
     WARNING: X should be sorted in ascending order before calling this function.
@@ -154,14 +155,10 @@ def flash_1d_kmeans_two_cluster_unweighted(X):
         return centroids, cluster_borders
 
     # Now we know that there are at least 3 elements
-
-    floor = 0
-    ceiling = len(X)
+    floor = 1
+    ceiling = len(X) - 1
     left_centroid = None
     right_centroid = None
-    division_point = None
-
-    X_prefix_sum = np.cumsum(X.astype(np.float64))
 
     while floor + 1 < ceiling:
         division_point = (floor + ceiling) // 2
