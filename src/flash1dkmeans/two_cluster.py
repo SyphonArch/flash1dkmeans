@@ -19,8 +19,8 @@ from .config import PREFIX_SUM_DTYPE, ARRAY_INDEX_DTYPE
 @numba.njit(cache=True)
 def numba_kmeans_1d_two_cluster(
         sorted_X,
-        weighted_X_prefix_sum,
         weights_prefix_sum,
+        weighted_X_prefix_sum,
         start_idx,
         stop_idx,
 ):
@@ -48,8 +48,6 @@ def numba_kmeans_1d_two_cluster(
 
     WARNING: X should be sorted in ascending order before calling this function.
     """
-    assert weights_prefix_sum is not None, "sample_weight_prefix_sum must be provided for weighted data"
-
     size = stop_idx - start_idx
     centroids = np.empty(2, dtype=sorted_X.dtype)
     cluster_borders = np.empty(3, dtype=ARRAY_INDEX_DTYPE)

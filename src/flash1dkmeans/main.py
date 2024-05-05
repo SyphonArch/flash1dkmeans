@@ -111,8 +111,8 @@ def kmeans_1d(
         if n_clusters == 2:
             centroids, cluster_borders = numba_kmeans_1d_two_cluster(
                 sorted_X=sorted_X,
-                weighted_X_prefix_sum=weighted_X_prefix_sum,
                 weights_prefix_sum=sample_weight_prefix_sum,
+                weighted_X_prefix_sum=weighted_X_prefix_sum,
                 start_idx=0,
                 stop_idx=len(sorted_X),
             )
