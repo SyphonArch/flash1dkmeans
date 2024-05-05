@@ -8,54 +8,67 @@ def flash_1d_kmeans_two_cluster(
         X,
         weighted_X_prefix_sum,
         sample_weight_prefix_sum,
-        start_idx,
-        stop_idx
 ):
     """An optimized kmeans for 1D data with 2 clusters.
-    Only operates on the range [start_idx, end_idx) of the input arrays.
+    Utilizes a binary search to find the optimal division point.
+    Time complexity: O(log(n))
 
-    This function uses np.float32 instead of np.float16 for the centroids so that numba can compile it.
-    Please cast the result back to np.float16 before saving it.
+    Args:
+        X: np.ndarray
+            The input data. Should be sorted in ascending order.
+        weighted_X_prefix_sum: np.ndarray
+            The prefix sum of the weighted X.
+        sample_weight_prefix_sum: np.ndarray
+            The prefix sum of the sample weights.
 
-    WARNING: X should be sorted in ascending order.
+    Returns:
+        centroids: np.ndarray
+            The centroids of the two clusters, shape (2,)
+        cluster_borders: np.ndarray
+            The borders of the two clusters, shape (3,)
+
+    WARNING: X should be sorted in ascending order before calling this function.
     """
-    size = stop_idx - start_idx
-    if size < 0:
-        raise ValueError("The end index should be greater than or equal to the start index")
+    if len(X) == 0:
+        raise ValueError("X should not be empty")
 
-    if size == 0:
-        raise ValueError("This function should not be called with an empty range")
+    centroids = np.empty(2, dtype=X.dtype)
+    cluster_borders = np.empty(3, dtype=np.int32)
+    cluster_borders[0] = 0
+    cluster_borders[2] = len(X)
+    # Remember to set cluster_borders[1] as the division point
 
-    centroids = np.empty(2, dtype=np.float32)
+    if len(X) == 1:
+        centroids[0], centroids[1] = X[0], X[0]
+        cluster_borders[1] = 1
+        return centroids, cluster_borders
 
-    if size == 1:
-        centroids[0], centroids[1] = X[start_idx], X[start_idx]
-        return centroids, start_idx + 1
-
-    if size == 2:
-        centroids[0], centroids[1] = X[start_idx], X[start_idx + 1]
-        return centroids, start_idx + 1
+    if len(X) == 2:
+        centroids[0], centroids[1] = X[0], X[1]
+        cluster_borders[1] = 1
+        return centroids, cluster_borders
 
     # Now we know that there are at least 3 elements
 
     # If the sum of the sample weight in the range is 0, we call an unweighted version of the function
-    if query_prefix_sum(sample_weight_prefix_sum, start_idx, stop_idx) == 0:
-        return flash_1d_kmeans_two_cluster_unweighted(X, start_idx, stop_idx)
+    if query_prefix_sum(sample_weight_prefix_sum, 0, len(X)) == 0:
+        return flash_1d_kmeans_two_cluster_unweighted(X)
 
     # Check if there is only one nonzero sample weight
-    total_weight = query_prefix_sum(sample_weight_prefix_sum, start_idx, stop_idx)
-    sample_weight_prefix_sum_within_range = sample_weight_prefix_sum[start_idx:stop_idx]
+    total_weight = query_prefix_sum(sample_weight_prefix_sum, 0, len(X))
+    sample_weight_prefix_sum_within_range = sample_weight_prefix_sum[0:len(X)]
     final_increase_idx = np.searchsorted(sample_weight_prefix_sum_within_range,
                                          sample_weight_prefix_sum_within_range[-1])
     final_increase_amount = query_prefix_sum(sample_weight_prefix_sum,
-                                             start_idx + final_increase_idx,
-                                             start_idx + final_increase_idx + 1)
+                                             final_increase_idx,
+                                             final_increase_idx + 1)
     if total_weight == final_increase_amount:
         # If there is only one nonzero sample weight, we need to return the corresponding weight as the centroid
         # and set all elements to the left cluster
-        nonzero_weight_index = start_idx + final_increase_idx
+        nonzero_weight_index = final_increase_idx
         centroids[0], centroids[1] = X[nonzero_weight_index], X[nonzero_weight_index]
-        return centroids, stop_idx
+        cluster_borders[1] = len(X)
+        return centroids, cluster_borders
 
     # Now we know that there are at least 3 elements and at least 2 nonzero weights
 
@@ -65,8 +78,8 @@ def flash_1d_kmeans_two_cluster(
     # We will do a search for the division point,
     # where we search for the optimum number of elements in the first cluster
     # We don't want empty clusters, so we set the floor and ceiling to 1 and len(X) - 1
-    floor = start_idx
-    ceiling = stop_idx
+    floor = 0
+    ceiling = len(X)
     left_centroid = None
     right_centroid = None
     division_point = None
@@ -74,18 +87,18 @@ def flash_1d_kmeans_two_cluster(
     while floor + 1 < ceiling:
         division_point = (floor + ceiling) // 2
         # If the left cluster has no weight, we need to move the floor up
-        left_weight_sum = query_prefix_sum(sample_weight_prefix_sum, start_idx, division_point)
+        left_weight_sum = query_prefix_sum(sample_weight_prefix_sum, 0, division_point)
         if left_weight_sum == 0:
             floor = division_point
             continue
-        right_weight_sum = query_prefix_sum(sample_weight_prefix_sum, division_point, stop_idx)
+        right_weight_sum = query_prefix_sum(sample_weight_prefix_sum, division_point, len(X))
         # If the right cluster has no weight, we need to move the ceiling down
         if right_weight_sum == 0:
             ceiling = division_point
             continue
 
-        left_centroid = query_prefix_sum(weighted_X_prefix_sum, start_idx, division_point) / left_weight_sum
-        right_centroid = query_prefix_sum(weighted_X_prefix_sum, division_point, stop_idx) / right_weight_sum
+        left_centroid = query_prefix_sum(weighted_X_prefix_sum, 0, division_point) / left_weight_sum
+        right_centroid = query_prefix_sum(weighted_X_prefix_sum, division_point, len(X)) / right_weight_sum
 
         new_division_point_value = (left_centroid + right_centroid) / 2
         if X[division_point - 1] <= new_division_point_value:
@@ -100,30 +113,50 @@ def flash_1d_kmeans_two_cluster(
     # initialize variables in case the loop above does not run through
     if left_centroid is None:
         division_point = (floor + ceiling) // 2
-        left_centroid = query_prefix_sum(weighted_X_prefix_sum, start_idx, division_point) / \
-                        query_prefix_sum(sample_weight_prefix_sum, start_idx, division_point)
+        left_centroid = query_prefix_sum(weighted_X_prefix_sum, 0, division_point) / \
+                        query_prefix_sum(sample_weight_prefix_sum, 0, division_point)
     if right_centroid is None:
         division_point = (floor + ceiling) // 2
-        right_centroid = query_prefix_sum(weighted_X_prefix_sum, division_point, stop_idx) / \
-                         query_prefix_sum(sample_weight_prefix_sum, division_point, stop_idx)
+        right_centroid = query_prefix_sum(weighted_X_prefix_sum, division_point, len(X)) / \
+                         query_prefix_sum(sample_weight_prefix_sum, division_point, len(X))
 
     # avoid using lists to allow numba.njit
     centroids[0] = left_centroid
     centroids[1] = right_centroid
 
-    return centroids, division_point
+    cluster_borders[1] = division_point
+    return centroids, cluster_borders
 
 
 @numba.njit(cache=True)
-def flash_1d_kmeans_two_cluster_unweighted(X, start_idx, stop_idx):
-    """Unweighted version of _faster_1d_two_cluster_kmeans.
+def flash_1d_kmeans_two_cluster_unweighted(X):
+    """Unweighted version of flash_1d_kmeans_two_cluster.
 
-    WARNING: X should have more than 3 elements and should be sorted in ascending order.
+    WARNING: X should be sorted in ascending order before calling this function.
     """
-    centroids = np.empty(2, dtype=np.float32)
+    if len(X) == 0:
+        raise ValueError("X should not be empty")
 
-    floor = start_idx
-    ceiling = stop_idx
+    centroids = np.empty(2, dtype=X.dtype)
+    cluster_borders = np.empty(3, dtype=np.int32)
+    cluster_borders[0] = 0
+    cluster_borders[2] = len(X)
+    # Remember to set cluster_borders[1] as the division point
+
+    if len(X) == 1:
+        centroids[0], centroids[1] = X[0], X[0]
+        cluster_borders[1] = 1
+        return centroids, cluster_borders
+
+    if len(X) == 2:
+        centroids[0], centroids[1] = X[0], X[1]
+        cluster_borders[1] = 1
+        return centroids, cluster_borders
+
+    # Now we know that there are at least 3 elements
+
+    floor = 0
+    ceiling = len(X)
     left_centroid = None
     right_centroid = None
     division_point = None
@@ -133,18 +166,18 @@ def flash_1d_kmeans_two_cluster_unweighted(X, start_idx, stop_idx):
     while floor + 1 < ceiling:
         division_point = (floor + ceiling) // 2
         # If the left cluster has no weight, we need to move the floor up
-        left_cluster_size = division_point - start_idx
+        left_cluster_size = division_point
         if left_cluster_size == 0:
             floor = division_point
             continue
-        right_cluster_size = stop_idx - division_point
+        right_cluster_size = len(X) - division_point
         # If the right cluster has no weight, we need to move the ceiling down
         if right_cluster_size == 0:
             ceiling = division_point
             continue
 
-        left_centroid = query_prefix_sum(X_prefix_sum, start_idx, division_point) / left_cluster_size
-        right_centroid = query_prefix_sum(X_prefix_sum, division_point, stop_idx) / right_cluster_size
+        left_centroid = query_prefix_sum(X_prefix_sum, 0, division_point) / left_cluster_size
+        right_centroid = query_prefix_sum(X_prefix_sum, division_point, len(X)) / right_cluster_size
 
         new_division_point_value = (left_centroid + right_centroid) / 2
         if X[division_point - 1] <= new_division_point_value:
@@ -159,13 +192,14 @@ def flash_1d_kmeans_two_cluster_unweighted(X, start_idx, stop_idx):
     # initialize variables in case the loop above does not run through
     if left_centroid is None:
         division_point = (floor + ceiling) // 2
-        left_centroid = query_prefix_sum(X_prefix_sum, start_idx, division_point) / (division_point - start_idx)
+        left_centroid = query_prefix_sum(X_prefix_sum, 0, division_point) / division_point
     if right_centroid is None:
         division_point = (floor + ceiling) // 2
-        right_centroid = query_prefix_sum(X_prefix_sum, division_point, stop_idx) / (stop_idx - division_point)
+        right_centroid = query_prefix_sum(X_prefix_sum, division_point, len(X)) / (len(X) - division_point)
 
     # avoid using lists to allow numba.njit
     centroids[0] = left_centroid
     centroids[1] = right_centroid
 
-    return centroids, division_point
+    cluster_borders[1] = division_point
+    return centroids, cluster_borders
