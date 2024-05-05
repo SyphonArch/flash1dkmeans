@@ -16,7 +16,6 @@ from .utils import query_prefix_sum, query_weights_prefix_sum
 from .config import PREFIX_SUM_DTYPE, ARRAY_INDEX_DTYPE
 
 
-#@numba.njit(cache=True)
 def flash_1d_kmeans_two_cluster(
         X,
         is_weighted,

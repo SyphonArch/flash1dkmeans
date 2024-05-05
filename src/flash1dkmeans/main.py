@@ -3,8 +3,10 @@ from .two_cluster import flash_1d_kmeans_two_cluster
 from .config import LABEL_DTYPE, PREFIX_SUM_DTYPE
 import numpy as np
 import logging
+import numba
 
 
+#@numba.njit
 def kmeans_1d(
         X,
         n_clusters,
@@ -191,6 +193,7 @@ def kmeans_1d(
         return centroids, labels
 
 
+#@numba.njit
 def _sorted_kmeans_1d(
         sorted_X,  # caller should ensure that X is sorted
         n_clusters,  # caller should ensure n_clusters >= 2
