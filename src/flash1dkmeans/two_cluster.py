@@ -31,10 +31,10 @@ def numba_kmeans_1d_two_cluster(
     Args:
         sorted_X: np.ndarray
             The input data. Should be sorted in ascending order.
-        weighted_X_prefix_sum: np.ndarray
-            The prefix sum of (the weighted) X.
         weights_prefix_sum: np.ndarray
             The prefix sum of the sample weights. Should be None if the data is unweighted.
+        weighted_X_prefix_sum: np.ndarray
+            The prefix sum of (the weighted) X.
         start_idx: int
             The start index of the range to consider.
         stop_idx: int
