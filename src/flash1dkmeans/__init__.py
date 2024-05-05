@@ -1,1 +1,1 @@
-from .main import flash_1d_kmeans
+from .main import kmeans_1d

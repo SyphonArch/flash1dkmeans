@@ -16,8 +16,8 @@ import numpy as np
 from .config import ARRAY_INDEX_DTYPE
 
 
-@numba.njit(cache=True)
-def flash_1d_kmeans_n_cluster(
+#@numba.njit(cache=True)
+def flash_1d_kmeans_k_cluster(
         X,
         n_clusters,
         max_iter,
@@ -79,7 +79,7 @@ def flash_1d_kmeans_n_cluster(
     sorted_centroids = np.sort(centroids)
 
     for _ in range(max_iter):
-        new_cluster_borders = centroids_to_cluster_borders(X, sorted_centroids, start_idx, stop_idx)
+        new_cluster_borders = _centroids_to_cluster_borders(X, sorted_centroids, start_idx, stop_idx)
 
         if np.array_equal(cluster_borders, new_cluster_borders):
             break
@@ -138,8 +138,8 @@ def _rand_choice_prefix_sum(arr, prob_prefix_sum, start_idx, stop_idx):
     return arr[idx]
 
 
-@numba.njit(cache=True)
-def centroids_to_cluster_borders(X, sorted_centroids, start_idx, stop_idx):
+#@numba.njit(cache=True)
+def _centroids_to_cluster_borders(X, sorted_centroids, start_idx, stop_idx):
     """Converts the centroids to cluster borders.
     The cluster borders are where the clusters are divided.
     The centroids must be sorted.
@@ -167,7 +167,7 @@ def centroids_to_cluster_borders(X, sorted_centroids, start_idx, stop_idx):
     return cluster_borders
 
 
-@numba.njit(cache=True)
+#@numba.njit(cache=True)
 def _calculate_inertia(sorted_centroids, centroid_ranges,
                        is_weighted, weights_prefix_sum, weighted_X_prefix_sum, weighted_X_squared_prefix_sum,
                        stop_idx):
@@ -221,7 +221,7 @@ def _calculate_inertia(sorted_centroids, centroid_ranges,
     return inertia
 
 
-@numba.njit(cache=True)
+#@numba.njit(cache=True)
 def _rand_choice_centroids(X, centroids,
                            is_weighted, weights_prefix_sum, weighted_X_prefix_sum, weighted_X_squared_prefix_sum,
                            sample_size, start_idx, stop_idx):
@@ -254,7 +254,7 @@ def _rand_choice_centroids(X, centroids,
         np.ndarray: The chosen samples
     """
     sorted_centroids = np.sort(centroids)
-    cluster_borders = centroids_to_cluster_borders(X, sorted_centroids, start_idx, stop_idx)
+    cluster_borders = _centroids_to_cluster_borders(X, sorted_centroids, start_idx, stop_idx)
     total_inertia = _calculate_inertia(sorted_centroids, cluster_borders,
                                        is_weighted, weights_prefix_sum, weighted_X_prefix_sum,
                                        weighted_X_squared_prefix_sum, stop_idx)
@@ -267,7 +267,7 @@ def _rand_choice_centroids(X, centroids,
         ceiling = stop_idx
         while floor < ceiling:
             stop_idx_cand = (floor + ceiling) // 2
-            inertia = _calculate_inertia(X, sorted_centroids, cluster_borders,
+            inertia = _calculate_inertia(sorted_centroids, cluster_borders,
                                          is_weighted, weights_prefix_sum, weighted_X_prefix_sum,
                                          weighted_X_squared_prefix_sum, stop_idx_cand)
             if inertia < selector:
@@ -279,7 +279,7 @@ def _rand_choice_centroids(X, centroids,
     return results
 
 
-@numba.njit(cache=True)
+#@numba.njit(cache=True)
 def _kmeans_plusplus(X, n_clusters,
                      is_weighted, weights_prefix_sum, weighted_X_prefix_sum, weighted_X_squared_prefix_sum,
                      n_local_trials, start_idx, stop_idx):
@@ -329,7 +329,7 @@ def _kmeans_plusplus(X, n_clusters,
         for i in range(len(centroid_candidates)):
             centroids[c_id] = centroid_candidates[i]
             sorted_centroids = np.sort(centroids[:c_id + 1])
-            centroid_ranges = centroids_to_cluster_borders(X, sorted_centroids, start_idx, stop_idx)
+            centroid_ranges = _centroids_to_cluster_borders(X, sorted_centroids, start_idx, stop_idx)
             inertia = _calculate_inertia(sorted_centroids, centroid_ranges,
                                          is_weighted, weights_prefix_sum, weighted_X_prefix_sum,
                                          weighted_X_squared_prefix_sum, stop_idx)

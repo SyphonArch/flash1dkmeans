@@ -1,18 +1,18 @@
-from .n_cluster import flash_1d_kmeans_n_cluster
+from .k_cluster import flash_1d_kmeans_k_cluster
 from .two_cluster import flash_1d_kmeans_two_cluster
 from .config import LABEL_DTYPE, PREFIX_SUM_DTYPE
 import numpy as np
 import logging
 
 
-def flash_1d_kmeans(
+def kmeans_1d(
         X,
         n_clusters,
         max_iter=300,
         is_sorted=False,
-        return_cluster_borders=False,
         sample_weights=None,
         n_local_trials=None,
+        return_cluster_borders=False,
         weights_prefix_sum=None,
         weighted_X_prefix_sum=None,
         weighted_X_squared_prefix_sum=None,
@@ -33,7 +33,7 @@ def flash_1d_kmeans(
             (+ (O(n) for prefix sum calculation if not provided))
 
     Args:
-        X: np.ndarray
+        X: np.ndarray or list
             The input data. Should be sorted in ascending order if is_sorted is False.
         n_clusters: int
             The number of clusters.
@@ -41,21 +41,21 @@ def flash_1d_kmeans(
             The maximum number of iterations. Only relevant for n_clusters > 2.
         is_sorted: bool
             Whether the data is already sorted.
-        return_cluster_borders: bool
-            Whether to return the cluster border indices instead of the labels.
-        sample_weights: np.ndarray
+        sample_weights: np.ndarray or list or None
             The sample weights. If None, all samples are weighted equally.
         n_local_trials: int
             The number of local trials for kmeans++ initialization. Only relevant for n_clusters > 2.
+        return_cluster_borders: bool
+            Whether to return the cluster border indices instead of the labels.
 
         In the case of repeatedly calling kmeans on different ranges of the same data, the following arguments
         can be provided to avoid redundant calculations. Make sure that the data is sorted if these are provided.
 
-        weights_prefix_sum: np.ndarray
+        weights_prefix_sum: np.ndarray or list or None
             The prefix sum of the sample weights. Should be None if the data is unweighted.
-        weighted_X_prefix_sum: np.ndarray
+        weighted_X_prefix_sum: np.ndarray or list or None
             The prefix sum of (the weighted) X.
-        weighted_X_squared_prefix_sum: np.ndarray
+        weighted_X_squared_prefix_sum: np.ndarray or list or None
             The prefix sum of (weighted) X squared.
         start_idx: int
             The start index of the range to consider.
@@ -114,8 +114,22 @@ def flash_1d_kmeans(
     # Check some values
     assert n_clusters >= 2, "n_clusters must be at least 2"
     assert max_iter >= 0, "max_iter must be non-negative"
-    assert 0 <= start_idx < stop_idx <= len(X), "Invalid start_idx and stop_idx"
     assert n_local_trials is None or n_local_trials > 0, "n_local_trials must be positive"
+
+    # -------------- Convert all arrays to numpy arrays --------------
+    X = np.asarray(X)
+
+    if sample_weights is not None:
+        sample_weights = np.asarray(sample_weights)
+
+    if weights_prefix_sum is not None:
+        weights_prefix_sum = np.asarray(weights_prefix_sum)
+
+    if weighted_X_prefix_sum is not None:
+        weighted_X_prefix_sum = np.asarray(weighted_X_prefix_sum)
+
+    if weighted_X_squared_prefix_sum is not None:
+        weighted_X_squared_prefix_sum = np.asarray(weighted_X_squared_prefix_sum)
 
     # -------------- Setting up defaults --------------
 
@@ -123,6 +137,8 @@ def flash_1d_kmeans(
         start_idx = 0
     if stop_idx is None:
         stop_idx = len(X)
+
+    assert 0 <= start_idx < stop_idx <= len(X), "Invalid start_idx and stop_idx"
 
     if n_local_trials is None:
         n_local_trials = 2 + int(np.log(n_clusters))
@@ -134,19 +150,20 @@ def flash_1d_kmeans(
     if not is_sorted:
         sorted_indices = np.argsort(X)
         sorted_X = X[sorted_indices]
+        sorted_sample_weights = None if sample_weights is None else sample_weights[sorted_indices]
     else:
         sorted_indices = None
         sorted_X = X
+        sorted_sample_weights = sample_weights
 
     # -------------- Main algorithm --------------
 
-    centroids, cluster_borders = _sorted_flash_1d_kmeans(
+    centroids, cluster_borders = _sorted_kmeans_1d(
         sorted_X,
         n_clusters,
         max_iter,
         is_weighted,
-        return_cluster_borders,
-        sample_weights,
+        sorted_sample_weights,
         n_local_trials,
         weights_prefix_sum,
         weighted_X_prefix_sum,
@@ -174,12 +191,11 @@ def flash_1d_kmeans(
         return centroids, labels
 
 
-def _sorted_flash_1d_kmeans(
+def _sorted_kmeans_1d(
         sorted_X,  # caller should ensure that X is sorted
         n_clusters,  # caller should ensure n_clusters >= 2
         max_iter,  # caller should ensure max_iter >= 0
         is_weighted,
-        return_cluster_borders,
         sample_weights,
         n_local_trials,
         weights_prefix_sum,
@@ -207,17 +223,15 @@ def _sorted_flash_1d_kmeans(
             The maximum number of iterations.
         is_weighted: bool
             Whether the data is weighted.
-        return_cluster_borders: bool
-            Whether to return the cluster borders.
-        sample_weights: np.ndarray
+        sample_weights: np.ndarray or list or None
             The sample weights.
         n_local_trials: int
             The number of local trials for kmeans++ initialization.
-        weights_prefix_sum: np.ndarray
+        weights_prefix_sum: np.ndarray or list or None
             The prefix sum of the sample weights.
-        weighted_X_prefix_sum: np.ndarray
+        weighted_X_prefix_sum: np.ndarray or list or None
             The prefix sum of (the weighted) X.
-        weighted_X_squared_prefix_sum: np.ndarray
+        weighted_X_squared_prefix_sum: np.ndarray or list or None
             The prefix sum of (the squared weighted) X.
         start_idx: int
             The start index of the range to consider.
@@ -270,7 +284,7 @@ def _sorted_flash_1d_kmeans(
                 weighted_X_prefix_sum = np.cumsum(sorted_X_casted)
                 weighted_X_squared_prefix_sum = np.cumsum(sorted_X_casted ** 2)
 
-        centroids, cluster_borders = flash_1d_kmeans_n_cluster(
+        centroids, cluster_borders = flash_1d_kmeans_k_cluster(
             sorted_X,
             n_clusters,
             max_iter,
@@ -283,7 +297,4 @@ def _sorted_flash_1d_kmeans(
             stop_idx,
         )
 
-    if return_cluster_borders:
-        return centroids, cluster_borders
-    else:
-        return centroids
+    return centroids, cluster_borders
