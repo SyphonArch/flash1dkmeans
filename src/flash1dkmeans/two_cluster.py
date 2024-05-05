@@ -17,10 +17,10 @@ from .config import PREFIX_SUM_DTYPE, ARRAY_INDEX_DTYPE
 
 
 @numba.njit(cache=True)
-def flash_1d_kmeans_two_cluster(
-        X,
+def numba_kmeans_1d_two_cluster(
+        sorted_X,
         weighted_X_prefix_sum,
-        sample_weight_prefix_sum,
+        weights_prefix_sum,
         start_idx,
         stop_idx,
 ):
@@ -29,11 +29,11 @@ def flash_1d_kmeans_two_cluster(
     Time complexity: O(log(n))
 
     Args:
-        X: np.ndarray
+        sorted_X: np.ndarray
             The input data. Should be sorted in ascending order.
         weighted_X_prefix_sum: np.ndarray
             The prefix sum of (the weighted) X.
-        sample_weight_prefix_sum: np.ndarray
+        weights_prefix_sum: np.ndarray
             The prefix sum of the sample weights. Should be None if the data is unweighted.
         start_idx: int
             The start index of the range to consider.
@@ -48,47 +48,47 @@ def flash_1d_kmeans_two_cluster(
 
     WARNING: X should be sorted in ascending order before calling this function.
     """
-    assert sample_weight_prefix_sum is not None, "sample_weight_prefix_sum must be provided for weighted data"
+    assert weights_prefix_sum is not None, "sample_weight_prefix_sum must be provided for weighted data"
 
     size = stop_idx - start_idx
-    centroids = np.empty(2, dtype=X.dtype)
+    centroids = np.empty(2, dtype=sorted_X.dtype)
     cluster_borders = np.empty(3, dtype=ARRAY_INDEX_DTYPE)
     cluster_borders[0] = start_idx
     cluster_borders[2] = stop_idx
     # Remember to set cluster_borders[1] as the division point
 
     if size == 1:
-        centroids[0], centroids[1] = X[start_idx], X[start_idx]
+        centroids[0], centroids[1] = sorted_X[start_idx], sorted_X[start_idx]
         cluster_borders[1] = start_idx + 1
         return centroids, cluster_borders
 
     if size == 2:
-        centroids[0], centroids[1] = X[start_idx], X[start_idx + 1]
+        centroids[0], centroids[1] = sorted_X[start_idx], sorted_X[start_idx + 1]
         cluster_borders[1] = start_idx + 1
         return centroids, cluster_borders
 
     # Now we know that there are at least 3 elements
 
     # If the sum of the sample weight in the range is 0, we assume that the data is unweighted
-    if query_prefix_sum(sample_weight_prefix_sum, start_idx, stop_idx) == 0:
+    if query_prefix_sum(weights_prefix_sum, start_idx, stop_idx) == 0:
         # We need to recalculate the prefix sum, as previously it would have been all zeros
-        X_casted = X.astype(PREFIX_SUM_DTYPE)
+        X_casted = sorted_X.astype(PREFIX_SUM_DTYPE)
         X_prefix_sum = np.cumsum(X_casted)
-        return flash_1d_kmeans_two_cluster_unweighted(X, X_prefix_sum, start_idx, stop_idx)
+        return numba_kmeans_1d_two_cluster_unweighted(sorted_X, X_prefix_sum, start_idx, stop_idx)
     else:
         # Check if there is only one nonzero sample weight
-        total_weight = query_prefix_sum(sample_weight_prefix_sum, start_idx, stop_idx)
-        sample_weight_prefix_sum_within_range = sample_weight_prefix_sum[start_idx:stop_idx]
+        total_weight = query_prefix_sum(weights_prefix_sum, start_idx, stop_idx)
+        sample_weight_prefix_sum_within_range = weights_prefix_sum[start_idx:stop_idx]
         final_increase_idx = np.searchsorted(sample_weight_prefix_sum_within_range,
                                              sample_weight_prefix_sum_within_range[-1])
-        final_increase_amount = query_prefix_sum(sample_weight_prefix_sum,
+        final_increase_amount = query_prefix_sum(weights_prefix_sum,
                                                  start_idx + final_increase_idx,
                                                  start_idx + final_increase_idx + 1)
         if total_weight == final_increase_amount:
             # If there is only one nonzero sample weight, we need to return the corresponding weight as the centroid
             # and set all elements to the left cluster
             nonzero_weight_index = start_idx + final_increase_idx
-            centroids[0], centroids[1] = X[nonzero_weight_index], X[nonzero_weight_index]
+            centroids[0], centroids[1] = sorted_X[nonzero_weight_index], sorted_X[nonzero_weight_index]
             cluster_borders[1] = stop_idx
             return centroids, cluster_borders
 
@@ -109,11 +109,11 @@ def flash_1d_kmeans_two_cluster(
     while floor + 1 < ceiling:
         division_point = (floor + ceiling) // 2
         # If the left cluster has no weight, we need to move the floor up
-        left_weight_sum = query_prefix_sum(sample_weight_prefix_sum, start_idx, division_point)
+        left_weight_sum = query_prefix_sum(weights_prefix_sum, start_idx, division_point)
         if left_weight_sum == 0:
             floor = division_point
             continue
-        right_weight_sum = query_prefix_sum(sample_weight_prefix_sum, division_point, stop_idx)
+        right_weight_sum = query_prefix_sum(weights_prefix_sum, division_point, stop_idx)
         # If the right cluster has no weight, we need to move the ceiling down
         if right_weight_sum == 0:
             ceiling = division_point
@@ -123,8 +123,8 @@ def flash_1d_kmeans_two_cluster(
         right_centroid = query_prefix_sum(weighted_X_prefix_sum, division_point, stop_idx) / right_weight_sum
 
         new_division_point_value = (left_centroid + right_centroid) / 2
-        if X[division_point - 1] <= new_division_point_value:
-            if new_division_point_value <= X[division_point]:
+        if sorted_X[division_point - 1] <= new_division_point_value:
+            if new_division_point_value <= sorted_X[division_point]:
                 # The new division point matches the previous one, so we can stop
                 break
             else:
@@ -136,11 +136,11 @@ def flash_1d_kmeans_two_cluster(
     if left_centroid is None:
         division_point = (floor + ceiling) // 2
         left_centroid = (query_prefix_sum(weighted_X_prefix_sum, start_idx, division_point) /
-                         query_prefix_sum(sample_weight_prefix_sum, start_idx, division_point))
+                         query_prefix_sum(weights_prefix_sum, start_idx, division_point))
     if right_centroid is None:
         division_point = (floor + ceiling) // 2
         right_centroid = (query_prefix_sum(weighted_X_prefix_sum, division_point, stop_idx) /
-                          query_prefix_sum(sample_weight_prefix_sum, division_point, stop_idx))
+                          query_prefix_sum(weights_prefix_sum, division_point, stop_idx))
 
     # avoid using lists to allow numba.njit
     centroids[0] = left_centroid
@@ -151,27 +151,27 @@ def flash_1d_kmeans_two_cluster(
 
 
 @numba.njit(cache=True)
-def flash_1d_kmeans_two_cluster_unweighted(
-        X,
+def numba_kmeans_1d_two_cluster_unweighted(
+        sorted_X,
         X_prefix_sum,
         start_idx,
         stop_idx,
 ):
     """Unweighted version of flash_1d_kmeans_two_cluster."""
     size = stop_idx - start_idx
-    centroids = np.empty(2, dtype=X.dtype)
+    centroids = np.empty(2, dtype=sorted_X.dtype)
     cluster_borders = np.empty(3, dtype=ARRAY_INDEX_DTYPE)
     cluster_borders[0] = start_idx
     cluster_borders[2] = stop_idx
     # Remember to set cluster_borders[1] as the division point
 
     if size == 1:
-        centroids[0], centroids[1] = X[start_idx], X[start_idx]
+        centroids[0], centroids[1] = sorted_X[start_idx], sorted_X[start_idx]
         cluster_borders[1] = start_idx + 1
         return centroids, cluster_borders
 
     if size == 2:
-        centroids[0], centroids[1] = X[start_idx], X[start_idx + 1]
+        centroids[0], centroids[1] = sorted_X[start_idx], sorted_X[start_idx + 1]
         cluster_borders[1] = start_idx + 1
         return centroids, cluster_borders
 
@@ -206,8 +206,8 @@ def flash_1d_kmeans_two_cluster_unweighted(
         right_centroid = query_prefix_sum(X_prefix_sum, division_point, stop_idx) / right_weight_sum
 
         new_division_point_value = (left_centroid + right_centroid) / 2
-        if X[division_point - 1] <= new_division_point_value:
-            if new_division_point_value <= X[division_point]:
+        if sorted_X[division_point - 1] <= new_division_point_value:
+            if new_division_point_value <= sorted_X[division_point]:
                 # The new division point matches the previous one, so we can stop
                 break
             else:

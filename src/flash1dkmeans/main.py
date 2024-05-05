@@ -1,15 +1,14 @@
-from .k_cluster import flash_1d_kmeans_k_cluster, flash_1d_kmeans_k_cluster_unweighted
-from .two_cluster import flash_1d_kmeans_two_cluster, flash_1d_kmeans_two_cluster_unweighted
+from .k_cluster import numba_kmeans_1d_k_cluster, numba_kmeans_1d_k_cluster_unweighted
+from .two_cluster import numba_kmeans_1d_two_cluster, numba_kmeans_1d_two_cluster_unweighted
 from .config import LABEL_DTYPE, PREFIX_SUM_DTYPE
 import numpy as np
 import logging
-import numba
 
 
 def kmeans_1d(
         X,
         n_clusters,
-        max_iter=300,
+        max_iter=None,
         is_sorted=False,
         sample_weights=None,
         n_local_trials=None,
@@ -35,6 +34,7 @@ def kmeans_1d(
             The number of clusters.
         max_iter: int
             The maximum number of iterations. Only relevant for n_clusters > 2.
+            Default is None, which becomes 300 for n_clusters > 2.
         is_sorted: bool
             Whether the data is already sorted.
         sample_weights: np.ndarray or list or None
@@ -69,9 +69,16 @@ def kmeans_1d(
             logging.warning(  # Warn the user that the data will be sorted
                 "The returned cluster borders will be indexed in the sorted order of X, not the original order.")
 
+    # max_iter is redundant if n_clusters == 2
+    if n_clusters == 2:
+        assert max_iter is None, "max_iter should not be provided for 2 clusters"
+    else:
+        if max_iter is None:
+            max_iter = 300
+
     # Check some values
     assert n_clusters >= 2, "n_clusters must be at least 2"
-    assert max_iter >= 0, "max_iter must be non-negative"
+    assert max_iter is None or max_iter >= 0, "max_iter must be non-negative"
     assert n_local_trials is None or n_local_trials > 0, "n_local_trials must be positive"
 
     # -------------- Convert all arrays to numpy arrays --------------
@@ -93,21 +100,54 @@ def kmeans_1d(
         sorted_X = X
         sorted_sample_weights = sample_weights
 
-    # -------------- Main algorithm --------------
+    # -------------- Calculate prefix sums & Execute main algorithm --------------
+
+    sorted_X_casted = sorted_X.astype(PREFIX_SUM_DTYPE)
 
     if is_weighted:
-        centroids, cluster_borders = _sorted_kmeans_1d(
-            sorted_X,
-            n_clusters,
-            max_iter,
-            sorted_sample_weights,
-        )
+        sample_weights_casted = sorted_sample_weights.astype(PREFIX_SUM_DTYPE)
+        sample_weight_prefix_sum = np.cumsum(sample_weights_casted)
+        weighted_X_prefix_sum = np.cumsum(sorted_X_casted * sample_weights_casted)
+        if n_clusters == 2:
+            centroids, cluster_borders = numba_kmeans_1d_two_cluster(
+                sorted_X=sorted_X,
+                weighted_X_prefix_sum=weighted_X_prefix_sum,
+                weights_prefix_sum=sample_weight_prefix_sum,
+                start_idx=0,
+                stop_idx=len(sorted_X),
+            )
+        else:
+            weighted_X_squared_prefix_sum = np.cumsum(sorted_X_casted ** 2 * sample_weights_casted)
+            centroids, cluster_borders = numba_kmeans_1d_k_cluster(
+                sorted_X=sorted_X,
+                n_clusters=n_clusters,
+                max_iter=max_iter,
+                weights_prefix_sum=sample_weight_prefix_sum,
+                weighted_X_prefix_sum=weighted_X_prefix_sum,
+                weighted_X_squared_prefix_sum=weighted_X_squared_prefix_sum,
+                start_idx=0,
+                stop_idx=len(sorted_X),
+            )
     else:
-        centroids, cluster_borders = _sorted_kmeans_1d_unweighted(
-            sorted_X,
-            n_clusters,
-            max_iter,
-        )
+        X_prefix_sum = np.cumsum(sorted_X_casted)
+        if n_clusters == 2:
+            centroids, cluster_borders = numba_kmeans_1d_two_cluster_unweighted(
+                sorted_X=sorted_X,
+                X_prefix_sum=X_prefix_sum,
+                start_idx=0,
+                stop_idx=len(sorted_X),
+            )
+        else:
+            X_squared_prefix_sum = np.cumsum(sorted_X_casted ** 2)
+            centroids, cluster_borders = numba_kmeans_1d_k_cluster_unweighted(
+                sorted_X=sorted_X,
+                n_clusters=n_clusters,
+                max_iter=max_iter,
+                X_prefix_sum=X_prefix_sum,
+                X_squared_prefix_sum=X_squared_prefix_sum,
+                start_idx=0,
+                stop_idx=len(sorted_X),
+            )
 
     # -------------- Post-processing --------------
 
@@ -126,157 +166,3 @@ def kmeans_1d(
             labels = labels[np.argsort(sorted_indices)]
 
         return centroids, labels
-
-
-@numba.njit(cache=True)
-def _sorted_kmeans_1d(
-        sorted_X,
-        n_clusters,
-        max_iter,
-        sample_weights,
-):
-    """Create the prefix sums and call the main algorithm, for weighted data"""
-    sample_weights_casted = sample_weights.astype(PREFIX_SUM_DTYPE)
-    weights_prefix_sum = np.cumsum(sample_weights_casted)
-
-    sorted_X_casted = sorted_X.astype(PREFIX_SUM_DTYPE)
-    weighted_X_prefix_sum = np.cumsum(sorted_X_casted * sample_weights_casted)
-    weighted_X_squared_prefix_sum = np.cumsum(sorted_X_casted ** 2 * sample_weights_casted)
-
-    centroids, cluster_borders = _sorted_kmeans_1d_prefix_sums(
-        sorted_X,
-        n_clusters,
-        max_iter,
-        weights_prefix_sum,
-        weighted_X_prefix_sum,
-        weighted_X_squared_prefix_sum,
-        start_idx=0,
-        stop_idx=len(sorted_X),
-    )
-
-    return centroids, cluster_borders
-
-
-@numba.njit(cache=True)
-def _sorted_kmeans_1d_unweighted(
-        sorted_X,
-        n_clusters,
-        max_iter,
-):
-    """Create the prefix sums and call the main algorithm, for unweighted data"""
-    X_casted = sorted_X.astype(PREFIX_SUM_DTYPE)
-    X_prefix_sum = np.cumsum(X_casted)
-    X_squared_prefix_sum = np.cumsum(X_casted ** 2)
-
-    centroids, cluster_borders = _sorted_kmeans_1d_prefix_sums_unweighted(
-        sorted_X,
-        n_clusters,
-        max_iter,
-        X_prefix_sum,
-        X_squared_prefix_sum,
-        start_idx=0,
-        stop_idx=len(sorted_X),
-    )
-
-    return centroids, cluster_borders
-
-
-@numba.njit(cache=True)
-def _sorted_kmeans_1d_prefix_sums(
-        sorted_X,  # caller should ensure that X is sorted
-        n_clusters,  # caller should ensure n_clusters >= 2
-        max_iter,  # caller should ensure max_iter >= 0
-        weights_prefix_sum,
-        weighted_X_prefix_sum,
-        weighted_X_squared_prefix_sum,
-        start_idx=None,
-        stop_idx=None,
-):
-    """The main algorithm for flash_1d_kmeans.
-    This function assumes that the input data is sorted, and all input is assumed to be valid.
-
-    Time complexity:
-        2 clusters:
-            O(log(n)) (+ (O(n) for prefix sum calculation if not provided))
-        n clusters:
-            O(n_clusters * 2 + log(n_clusters) * log(n) + max_iter * log(n) * n_clusters)
-            (+ (O(n) for prefix sum calculation if not provided))
-
-    Args:
-        sorted_X: np.ndarray
-            The input data. Should be sorted in ascending order.
-        n_clusters: int
-            The number of clusters.
-        max_iter: int
-            The maximum number of iterations.
-        weights_prefix_sum: np.ndarray
-            The prefix sum of the sample weights.
-        weighted_X_prefix_sum: np.ndarray
-            The prefix sum of X, weighted by the sample weights.
-        weighted_X_squared_prefix_sum: np.ndarray
-            The prefix sum of X squared, weighted by the sample weights.
-        start_idx: int
-            The start index of the range to consider.
-        stop_idx: int
-            The stop index of the range to consider.
-
-    Returns:
-        centroids: np.ndarray
-            The centroids of the clusters.
-        cluster_borders: np.ndarray
-            The borders of the clusters.
-    """
-
-    if n_clusters == 2:
-        centroids, cluster_borders = flash_1d_kmeans_two_cluster(
-            sorted_X,
-            weighted_X_prefix_sum,
-            weights_prefix_sum,
-            start_idx,
-            stop_idx,
-        )
-    else:
-        centroids, cluster_borders = flash_1d_kmeans_k_cluster(
-            sorted_X,
-            n_clusters,
-            max_iter,
-            weights_prefix_sum,
-            weighted_X_prefix_sum,
-            weighted_X_squared_prefix_sum,
-            start_idx,
-            stop_idx,
-        )
-
-    return centroids, cluster_borders
-
-
-@numba.njit(cache=True)
-def _sorted_kmeans_1d_prefix_sums_unweighted(
-        sorted_X,
-        n_clusters,
-        max_iter,
-        X_prefix_sum,
-        X_squared_prefix_sum,
-        start_idx,
-        stop_idx,
-):
-    """The unweighted version of _sorted_kmeans_1d_prefix_sums"""
-    if n_clusters == 2:
-        centroids, cluster_borders = flash_1d_kmeans_two_cluster_unweighted(
-            sorted_X,
-            X_prefix_sum,
-            start_idx,
-            stop_idx,
-        )
-    else:
-        centroids, cluster_borders = flash_1d_kmeans_k_cluster_unweighted(
-            sorted_X,
-            n_clusters,
-            max_iter,
-            X_prefix_sum,
-            X_squared_prefix_sum,
-            start_idx,
-            stop_idx,
-        )
-
-    return centroids, cluster_borders

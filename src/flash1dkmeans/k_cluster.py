@@ -17,8 +17,8 @@ from .config import ARRAY_INDEX_DTYPE
 
 
 @numba.njit(cache=True)
-def flash_1d_kmeans_k_cluster(
-        X,
+def numba_kmeans_1d_k_cluster(
+        sorted_X,
         n_clusters,
         max_iter,
         weights_prefix_sum, weighted_X_prefix_sum,
@@ -32,7 +32,7 @@ def flash_1d_kmeans_k_cluster(
                       = O(k ^ 2 * log(k) * log(n) + max_iter * log(n) * k)
 
     Args:
-        X: np.ndarray
+        sorted_X: np.ndarray
             The input data. Should be sorted in ascending order.
         n_clusters: int
             The number of clusters to generate
@@ -55,14 +55,14 @@ def flash_1d_kmeans_k_cluster(
         cluster_borders: np.ndarray
             The borders of the clusters
     """
-    assert weights_prefix_sum is not None, "weights_prefix_sum must be provided for weighted data"
+    assert n_clusters > 2, "n_clusters must be greater than 2, for 2 clusters use the faster two cluster implementation"
 
     cluster_borders = np.empty(n_clusters + 1, dtype=ARRAY_INDEX_DTYPE)
     cluster_borders[0] = start_idx
     cluster_borders[-1] = stop_idx
 
     centroids = _kmeans_plusplus(
-        X, n_clusters,
+        sorted_X, n_clusters,
         weights_prefix_sum, weighted_X_prefix_sum,
         weighted_X_squared_prefix_sum,
         start_idx, stop_idx,
@@ -70,7 +70,7 @@ def flash_1d_kmeans_k_cluster(
     sorted_centroids = np.sort(centroids)
 
     for _ in range(max_iter):
-        new_cluster_borders = _centroids_to_cluster_borders(X, sorted_centroids, start_idx, stop_idx)
+        new_cluster_borders = _centroids_to_cluster_borders(sorted_X, sorted_centroids, start_idx, stop_idx)
 
         if np.array_equal(cluster_borders, new_cluster_borders):
             break
@@ -91,7 +91,7 @@ def flash_1d_kmeans_k_cluster(
 
             if cluster_weight_sum == 0:
                 # if the sum of the weights is zero, we set the centroid to the mean of the cluster
-                sorted_centroids[i] = X[cluster_start:cluster_end].mean()
+                sorted_centroids[i] = sorted_X[cluster_start:cluster_end].mean()
             else:
                 sorted_centroids[i] = cluster_weighted_X_sum / cluster_weight_sum
 
@@ -99,8 +99,8 @@ def flash_1d_kmeans_k_cluster(
 
 
 @numba.njit(cache=True)
-def flash_1d_kmeans_k_cluster_unweighted(
-        X,
+def numba_kmeans_1d_k_cluster_unweighted(
+        sorted_X,
         n_clusters,
         max_iter,
         X_prefix_sum,
@@ -109,13 +109,14 @@ def flash_1d_kmeans_k_cluster_unweighted(
         stop_idx,
 ):
     """Unweighted version of flash_1d_kmeans_k_cluster"""
+    assert n_clusters > 2, "n_clusters must be greater than 2, for 2 clusters use the faster two cluster implementation"
 
     cluster_borders = np.empty(n_clusters + 1, dtype=ARRAY_INDEX_DTYPE)
     cluster_borders[0] = start_idx
     cluster_borders[-1] = stop_idx
 
     centroids = _kmeans_plusplus_unweighted(
-        X, n_clusters,
+        sorted_X, n_clusters,
         X_prefix_sum,
         X_squared_prefix_sum,
         start_idx, stop_idx,
@@ -123,7 +124,7 @@ def flash_1d_kmeans_k_cluster_unweighted(
     sorted_centroids = np.sort(centroids)
 
     for _ in range(max_iter):
-        new_cluster_borders = _centroids_to_cluster_borders(X, sorted_centroids, start_idx, stop_idx)
+        new_cluster_borders = _centroids_to_cluster_borders(sorted_X, sorted_centroids, start_idx, stop_idx)
 
         if np.array_equal(cluster_borders, new_cluster_borders):
             break
@@ -144,7 +145,7 @@ def flash_1d_kmeans_k_cluster_unweighted(
 
             if cluster_weight_sum == 0:
                 # if the sum of the weights is zero, we set the centroid to the mean of the cluster
-                sorted_centroids[i] = X[cluster_start:cluster_end].mean()
+                sorted_centroids[i] = sorted_X[cluster_start:cluster_end].mean()
             else:
                 sorted_centroids[i] = cluster_weighted_X_sum / cluster_weight_sum
 

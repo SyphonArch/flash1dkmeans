@@ -1,4 +1,4 @@
-from flash1dkmeans import _sorted_kmeans_1d_prefix_sums
+from flash1dkmeans import numba_kmeans_1d_k_cluster
 import numpy as np
 
 n, k = 1024, 4
@@ -22,7 +22,7 @@ middle_idx = n // 2
 # Providing prefix sums reduces redundant calculations
 # This is useful when the algorithm is run multiple times on different segments of the data
 for start_idx, stop_idx in [(0, middle_idx), (middle_idx, n)]:
-    centroids, cluster_borders = _sorted_kmeans_1d_prefix_sums(
+    centroids, cluster_borders = numba_kmeans_1d_k_cluster(
         data, k,  # Note how the sample weights are not provided when the prefix sums are provided
         max_iter=100,  # maximum number of iterations
         weights_prefix_sum=weights_prefix_sum,  # prefix sum of the sample weights, leave empty for unwieghted data
