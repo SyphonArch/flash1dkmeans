@@ -66,7 +66,7 @@ centroids, labels = kmeans_1d(
 ```
 
 ### Even More Options
-The underlying Numba-accelerated function `_sorted_kmeans_1d` can be used directly for more control.
+The underlying Numba-accelerated function `numba_kmeans_1d_k_clusters` can be used directly for more control.
 
 This is useful when the algorithm is run multiple times on different segments of the data,
 or to use within another Numba-accelerated function.
