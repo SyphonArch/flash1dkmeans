@@ -6,6 +6,13 @@ Exploits the fact that one-dimensional data can be sorted.
 For the lower level functions prefixed with `numba_`, Numba acceleration is used,
 so callers can utilize these functions within their own Numba-accelerated functions.
 
+## Important Notice
+
+This library utilizes [Numba](https://numba.pydata.org/), a JIT compiler, for acceleration.
+As there is a compile time overhead, the first invocation may be slower than usual.
+
+After the first invocation, Numba caches the compiled functions, so execution times should stabilize.
+
 ## Features
 
 ### Two clusters
@@ -77,6 +84,8 @@ The list of available functions are as follows:
 - `numba_kmeans_1d_k_cluster`
 - `numba_kmeans_1d_k_cluster_unweighted`
 
+All of these functions assume the data is sorted beforehand.
+
 ```python
 from flash1dkmeans import numba_kmeans_1d_k_cluster
 import numpy as np
@@ -100,10 +109,9 @@ middle_idx = n // 2
 # Providing prefix sums reduces redundant calculations
 # This is useful when the algorithm is run multiple times on different segments of the data
 for start_idx, stop_idx in [(0, middle_idx), (middle_idx, n)]:
-  centroids, cluster_borders = numba_kmeans_1d_k_cluster(
+  centroids, cluster_borders = numba_kmeans_1d_k_cluster(  # Note that data MUST be sorted beforehand
     data, k,  # Note how the sample weights are not provided when the prefix sums are provided
     max_iter=100,  # maximum number of iterations
-    is_sorted=True,
     weights_prefix_sum=weights_prefix_sum,  # prefix sum of the sample weights, leave empty for unwieghted data
     weighted_X_prefix_sum=weighted_X_prefix_sum,  # prefix sum of the weighted data
     weighted_X_squared_prefix_sum=weighted_X_squared_prefix_sum,  # prefix sum of the squared weighted data
