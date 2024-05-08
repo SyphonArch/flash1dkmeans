@@ -11,7 +11,7 @@ so callers can utilize these functions within their own Numba-accelerated functi
 This library utilizes [Numba](https://numba.pydata.org/), a JIT compiler, for acceleration.
 As there is a compile time overhead, the first invocation may be slower than usual.
 
-After the first invocation, Numba caches the compiled functions, so execution times should stabilize.
+Numba caches the compiled functions, so execution times should stabilize after the first invocation.
 
 ## Features
 
