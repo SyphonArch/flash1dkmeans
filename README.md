@@ -17,7 +17,7 @@ Numba caches the compiled functions, so execution times should stabilize after t
 
 ### Two clusters
 
-Guaranteed to find the optimal solution for two clusters.
+Guaranteed to find the optimal solution for two clusters by employing a clever binary search.
 
 ### K clusters
 
