@@ -28,7 +28,7 @@ Then uses the Lloyd's algorithm to find the final centroids, except with optimiz
 
 - **2 clusters**: O(log(n))
 - (+ (O(n) for prefix sum calculation if not provided))
-- **k clusters**: O(k * 2 + log(k) * log(n) + max_iter * log(n) * k)  
+- **k clusters**: O(k ^ 2 * log(k) * log(n) + max_iter * log(n) * k)  
   (+ (O(n) for prefix sum calculation if not provided))
 
 This is a significant improvement over the standard K-means algorithm, which has a time complexity of O(n * k * max_iter),
