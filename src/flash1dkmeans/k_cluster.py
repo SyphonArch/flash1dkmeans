@@ -392,7 +392,7 @@ def _kmeans_plusplus(X, n_clusters,
     """An optimized version of the kmeans++ initialization algorithm for 1D data.
     The algorithm is optimized for 1D data and utilizes prefix sums for efficient calculations.
 
-    Time complexity: O(n_clusters * log(n_clusters) * log(len(X)) * n_clusters)
+    Time complexity: O(n_clusters * (log(n_clusters) * log(len(X)) * n_clusters + log(len(X)) * n_clusters + n_clusters))
                      = O(k ^ 2 * log(k) * log(n))
 
     Args:
