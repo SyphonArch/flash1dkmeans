@@ -29,14 +29,16 @@ Then uses the Lloyd's algorithm to find the final centroids, except with optimiz
 For number of elements $n$, number of clusteres $k$, number of Lloyd's algorithm iterations $i$, and assuming one-dimensional data (which is the only case covered by this implementation):
 
 - **2 clusters**: $O(\log{n})$  
-  (+ $O(n)$ for prefix sum calculation if not provided)
+  ($+ O(n)$ for prefix sum calculation if not provided, $+ O(n \cdot \log {n})$ for sorting if not sorted)
 - **$k$ clusters**: $O(k ^ 2 \cdot \log {k} \cdot \log {n}) + O(i \cdot \log {n} \cdot k)$  
   (The first term is for K-means++ initialization, and the latter for Lloyd's algorithm)  
-  (+ $O(n)$ for prefix sum calculation if not provided))
+  ($+ O(n)$ for prefix sum calculation if not provided, $+ O(n \cdot \log {n})$ for sorting if not sorted)
 
 This is a significant improvement over common K-means implementations.
 For example, general implementations for $d$-dimensional data using a combination of greedy K-means++ initialization and Lloyd's algorithm for convergence,
 when given one-dimensional data, spends $O(k ^ 2 \cdot \log {k} \cdot n)$ time in initialization and $O(i \cdot n \cdot k)$ time in iterations.
+
+**Note that you must use the underlying `numba_` functions directly in order to directly supply prefix sums and skip sorting.**
 
 ## How fast is it?
 
