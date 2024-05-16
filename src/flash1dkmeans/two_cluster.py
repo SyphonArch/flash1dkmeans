@@ -104,17 +104,17 @@ def numba_kmeans_1d_two_cluster(
     right_centroid = None
     division_point = None
 
-    while floor + 1 < ceiling:
+    while floor < ceiling:
         division_point = (floor + ceiling) // 2
         # If the left cluster has no weight, we need to move the floor up
         left_weight_sum = query_prefix_sum(weights_prefix_sum, start_idx, division_point)
         if left_weight_sum == 0:
-            floor = division_point
+            floor = division_point + 1
             continue
         right_weight_sum = query_prefix_sum(weights_prefix_sum, division_point, stop_idx)
         # If the right cluster has no weight, we need to move the ceiling down
         if right_weight_sum == 0:
-            ceiling = division_point
+            ceiling = division_point - 1
             continue
 
         left_centroid = query_prefix_sum(weighted_X_prefix_sum, start_idx, division_point) / left_weight_sum
@@ -126,9 +126,9 @@ def numba_kmeans_1d_two_cluster(
                 # The new division point matches the previous one, so we can stop
                 break
             else:
-                floor = division_point
+                floor = division_point + 1
         else:
-            ceiling = division_point
+            ceiling = division_point - 1
 
     # initialize variables in case the loop above does not run through
     if left_centroid is None:
@@ -187,17 +187,17 @@ def numba_kmeans_1d_two_cluster_unweighted(
     right_centroid = None
     division_point = None
 
-    while floor + 1 < ceiling:
+    while floor < ceiling:
         division_point = (floor + ceiling) // 2
         # If the left cluster has no weight, we need to move the floor up
         left_weight_sum = division_point - start_idx
         if left_weight_sum == 0:
-            floor = division_point
+            floor = division_point + 1
             continue
         right_weight_sum = stop_idx - division_point
         # If the right cluster has no weight, we need to move the ceiling down
         if right_weight_sum == 0:
-            ceiling = division_point
+            ceiling = division_point - 1
             continue
 
         left_centroid = query_prefix_sum(X_prefix_sum, start_idx, division_point) / left_weight_sum
@@ -209,9 +209,9 @@ def numba_kmeans_1d_two_cluster_unweighted(
                 # The new division point matches the previous one, so we can stop
                 break
             else:
-                floor = division_point
+                floor = division_point + 1
         else:
-            ceiling = division_point
+            ceiling = division_point - 1
 
     # initialize variables in case the loop above does not run through
     if left_centroid is None:
