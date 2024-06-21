@@ -118,7 +118,7 @@ for start_idx, stop_idx in [(0, middle_idx), (middle_idx, n)]:
   centroids, cluster_borders = numba_kmeans_1d_k_cluster(  # Note that data MUST be sorted beforehand
     data, k,  # Note how the sample weights are not provided when the prefix sums are provided
     max_iter=100,  # maximum number of iterations
-    weights_prefix_sum=weights_prefix_sum,  # prefix sum of the sample weights, leave empty for unwieghted data
+    weights_prefix_sum=weights_prefix_sum,  # prefix sum of the sample weights, leave empty for unweighted data
     weighted_X_prefix_sum=weighted_X_prefix_sum,  # prefix sum of the weighted data
     weighted_X_squared_prefix_sum=weighted_X_squared_prefix_sum,  # prefix sum of the squared weighted data
     start_idx=start_idx,  # start index of the data
@@ -136,4 +136,6 @@ where multiple 1D K-means instances are run in parallel for LLM quantization.
 However, the algorithm is general and can be used for any 1D K-means problem.
 
 I have proved the validity for the two cluster case - detailed version of the proof might be posted in the future.
+
+Feel free to leave issues or contact me at jakehyun@snu.ac.kr for inquiries.
 
