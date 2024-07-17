@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "flash1dkmeans"
-version = "0.1.2"
+version = "0.1.3"
 authors = [
     { name = "Jake Hyun", email = "jake.hyun@hotmail.com" },
 ]
@@ -26,7 +26,7 @@ Homepage = "https://github.com/SyphonArch/flash1dkmeans"
 Issues = "https://github.com/SyphonArch/flash1dkmeans/issues"
 
 [tool.hatch.build.targets.sdist]
-include = ["src/**"]
+exclude = ["benchmarks/**", "tests/**"]
 
 [tool.hatch.build.targets.wheel]
-include = ["src/**"]
+exclude = ["benchmarks/**", "tests/**"]
