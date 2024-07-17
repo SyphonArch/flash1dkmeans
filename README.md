@@ -30,7 +30,7 @@ The algorithm is non-deterministic, but you can provide a random seed for reprod
 
 For number of elements $n$, number of clusteres $k$, number of Lloyd's algorithm iterations $i$, and assuming one-dimensional data (which is the only case covered by this implementation):
 
-- **2 clusters**: $O(\log{n})$  
+- **Two clusters**: $O(\log{n})$  
   ($+ O(n)$ for prefix sum calculation if not provided, $+ O(n \cdot \log {n})$ for sorting if not sorted)
 - **$k$ clusters**: $O(k ^ 2 \cdot \log {k} \cdot \log {n}) + O(i \cdot \log {n} \cdot k)$  
   (The first term is for K-means++ initialization, and the latter for Lloyd's algorithm)  
@@ -43,9 +43,28 @@ when given one-dimensional data, spends $O(k ^ 2 \cdot \log {k} \cdot n)$ time i
 **Note that you must use the underlying `numba_` functions directly in order to directly supply prefix sums and skip sorting.**
 
 ## How fast is it?
+Here we compare `flash1dkmeans` against one of the most commonly used K-means implementations, [sklearn.cluster.KMeans](https://scikit-learn.org/stable/modules/generated/sklearn.cluster.KMeans.html).
 
-TODO: Comparision with sklearn's KMeans
+In the figures below, we show the K-means clustering runtime on randomly generated data of various sizes.
+- **flash1dkmeans** measures the wrapper function kmeans_1d, which includes the sorting and prefix sum calculation overheads.  
+- **flash1dkemeans_numba** measures the underlying Numba-accelerated functions, excluding the sorting and prefix sum calculation overheads. (A case where this performance is useful is when you only have to sort once, while calling K-means multiple times on different segments of the same data - or if you already have the sorted prefix sum calculations ready. Both happened to be the case for [Any-Precision-LLM](https://github.com/SNU-ARC/any-precision-llm).)
 
+| | |
+--- | ---
+![runtime comparison k=2](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig/runtime_comparison_k2.png) | ![runtime comparison k=16](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig/runtime_comparison_k16.png)
+![runtime comparison k=256](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig/runtime_comparison_k256.png) | ![runtime comparison k=512](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig/runtime_comparison_k512.png)
+
+You can confirm that `flash1dkmeans` is several orders of magnitude faster, even when measured with the wrapper function, including the sorting and prefix sum calculation overheads.
+Additionally, you can see that for the two-cluster case, the algorithm indeed is $O(\log{n})$ - the Numba function's runtime barely grows.
+
+These speeds are achieved while finding the <ins>optimal clustering for the two-cluster case</ins>, and running an <ins>optimized but mathematically equivalent algorithm to sklearn’s implementation for the k-cluster case</ins>, ensuring identical or better results apart from numerical errors and effects from randomness.
+
+The figures below demonstrate this by comparing the squared error of the clusterings, on real and generated datasets obtained using scikit-learn.
+
+| | |
+--- | ---
+![inertia comparison k=2](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig/inertia_comparison_k2.png) | ![inertia comparison k=4](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig/inertia_comparison_k4.png)
+![inertia comparison k=16](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig/inertia_comparison_k16.png) | ![inertia comparison k=32](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig/inertia_comparison_k32.png)
 
 ## Installation
 ```bash
