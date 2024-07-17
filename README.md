@@ -17,12 +17,14 @@ Numba caches the compiled functions, so execution times should stabilize after t
 
 ### Two clusters
 
-Guaranteed to find the optimal solution for two clusters by employing a clever binary search.
+Guaranteed to find the optimal solution for two clusters by employing a clever binary search.  
+The algorithm is deterministic.
 
 ### K clusters
 
 Uses the K-means++ initialization algorithm to find the initial centroids.
 Then uses the Lloyd's algorithm to find the final centroids, except with optimizations for the one-dimensional case.
+The algorithm is non-deterministic, but you can provide a random seed for reproducibility.
 
 ## Time Complexity
 
@@ -75,6 +77,7 @@ centroids, labels = kmeans_1d(
     data, k,
     sample_weights=weights,  # sample weights
     max_iter=100,  # maximum number of iterations
+    random_state=42,  # random seed
 )
 ```
 
@@ -123,6 +126,7 @@ for start_idx, stop_idx in [(0, middle_idx), (middle_idx, n)]:
     weighted_X_squared_prefix_sum=weighted_X_squared_prefix_sum,  # prefix sum of the squared weighted data
     start_idx=start_idx,  # start index of the data
     stop_idx=stop_idx,  # stop index of the data
+    random_state=42,  # random seed
   )
 ```
 

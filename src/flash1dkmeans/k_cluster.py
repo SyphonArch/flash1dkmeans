@@ -11,7 +11,7 @@ This is because this module is intended to be used internally.
 """
 
 import numba
-from .utils import query_prefix_sum
+from .utils import query_prefix_sum, set_np_seed_njit
 import numpy as np
 from .config import ARRAY_INDEX_DTYPE
 
@@ -25,6 +25,7 @@ def numba_kmeans_1d_k_cluster(
         weighted_X_squared_prefix_sum,
         start_idx,
         stop_idx,
+        random_state=None,
 ):
     """An optimized kmeans for 1D data with n clusters.
     Exploits the fact that the data is 1D to optimize the calculations.
@@ -48,6 +49,8 @@ def numba_kmeans_1d_k_cluster(
             The start index of the range to consider
         stop_idx: int
             The stop index of the range to consider
+        random_state: int or None
+            The random seed to use.
 
     Returns:
         centroids: np.ndarray
@@ -56,6 +59,9 @@ def numba_kmeans_1d_k_cluster(
             The borders of the clusters
     """
     assert n_clusters > 2, "n_clusters must be greater than 2, for 2 clusters use the faster two cluster implementation"
+
+    # set random_state
+    set_np_seed_njit(random_state)
 
     cluster_borders = np.empty(n_clusters + 1, dtype=ARRAY_INDEX_DTYPE)
     cluster_borders[0] = start_idx
@@ -107,9 +113,13 @@ def numba_kmeans_1d_k_cluster_unweighted(
         X_squared_prefix_sum,
         start_idx,
         stop_idx,
+        random_state=None,
 ):
     """Unweighted version of flash_1d_kmeans_k_cluster"""
     assert n_clusters > 2, "n_clusters must be greater than 2, for 2 clusters use the faster two cluster implementation"
+
+    # set random_state
+    set_np_seed_njit(random_state)
 
     cluster_borders = np.empty(n_clusters + 1, dtype=ARRAY_INDEX_DTYPE)
     cluster_borders[0] = start_idx

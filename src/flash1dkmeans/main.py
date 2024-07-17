@@ -13,6 +13,7 @@ def kmeans_1d(
         sample_weights=None,
         n_local_trials=None,
         return_cluster_borders=False,
+        random_state=None,
 ):
     """An optimized kmeans for 1D data.
     Utilizes a binary search to find the optimal division points for 2 clusters,
@@ -43,6 +44,8 @@ def kmeans_1d(
             The number of local trials for kmeans++ initialization. Only relevant for n_clusters > 2.
         return_cluster_borders: bool
             Whether to return the cluster border indices instead of the labels.
+        random_state: int or None
+            The random seed, use for reproducibility. Only relevant for n_clusters > 2, as 2 clusters are deterministic.
 
     Returns:
         centroids: np.ndarray
@@ -127,6 +130,7 @@ def kmeans_1d(
                 weighted_X_squared_prefix_sum=weighted_X_squared_prefix_sum,
                 start_idx=0,
                 stop_idx=len(sorted_X),
+                random_state=random_state,
             )
     else:
         X_prefix_sum = np.cumsum(sorted_X_casted)
@@ -147,6 +151,7 @@ def kmeans_1d(
                 X_squared_prefix_sum=X_squared_prefix_sum,
                 start_idx=0,
                 stop_idx=len(sorted_X),
+                random_state=random_state,
             )
 
     # -------------- Post-processing --------------

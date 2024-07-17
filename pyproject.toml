@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "flash1dkmeans"
-version = "0.1.1"
+version = "0.1.2"
 authors = [
   { name="Jake Hyun", email="jake.hyun@hotmail.com" },
 ]
@@ -17,8 +17,8 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "numba~=0.59.1",
-    "numpy~=1.26.4"
+    "numba~=0.60.0",
+    "numpy~=2.0.0"
 ]
 
 
