@@ -102,7 +102,6 @@ def numba_kmeans_1d_two_cluster(
     ceiling = stop_idx - 1
     left_centroid = None
     right_centroid = None
-    division_point = None
 
     while floor < ceiling:
         division_point = (floor + ceiling) // 2
@@ -130,13 +129,14 @@ def numba_kmeans_1d_two_cluster(
         else:
             ceiling = division_point - 1
 
+    # recalculate division point based on final floor and ceiling
+    division_point = (floor + ceiling) // 2
+
     # initialize variables in case the loop above does not run through
     if left_centroid is None:
-        division_point = (floor + ceiling) // 2
         left_centroid = (query_prefix_sum(weighted_X_prefix_sum, start_idx, division_point) /
                          query_prefix_sum(weights_prefix_sum, start_idx, division_point))
     if right_centroid is None:
-        division_point = (floor + ceiling) // 2
         right_centroid = (query_prefix_sum(weighted_X_prefix_sum, division_point, stop_idx) /
                           query_prefix_sum(weights_prefix_sum, division_point, stop_idx))
 
@@ -185,7 +185,6 @@ def numba_kmeans_1d_two_cluster_unweighted(
     ceiling = stop_idx - 1
     left_centroid = None
     right_centroid = None
-    division_point = None
 
     while floor < ceiling:
         division_point = (floor + ceiling) // 2
@@ -213,12 +212,13 @@ def numba_kmeans_1d_two_cluster_unweighted(
         else:
             ceiling = division_point - 1
 
+    # recalculate division point based on final floor and ceiling
+    division_point = (floor + ceiling) // 2
+
     # initialize variables in case the loop above does not run through
     if left_centroid is None:
-        division_point = (floor + ceiling) // 2
         left_centroid = query_prefix_sum(X_prefix_sum, start_idx, division_point) / (division_point - start_idx)
     if right_centroid is None:
-        division_point = (floor + ceiling) // 2
         right_centroid = query_prefix_sum(X_prefix_sum, division_point, stop_idx) / (stop_idx - division_point)
 
     # avoid using lists to allow numba.njit
