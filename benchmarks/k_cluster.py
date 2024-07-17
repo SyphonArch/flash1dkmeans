@@ -1,4 +1,4 @@
-from datasets import data, scaled_data
+from datasets import data, scaled_data, random_weights
 from flash1dkmeans import kmeans_1d, numba_kmeans_1d_k_cluster
 from utils import calculate_inertia
 from time import time
@@ -15,7 +15,7 @@ all_data = {**data, **scaled_data}
 
 for dataset_name, dataset in all_data.items():
     bench[dataset_name] = {}
-    weights = np.random.random_sample(dataset.shape)
+    weights = random_weights[:len(dataset)]
     for k in k_to_test:
         if k > len(dataset):
             continue
@@ -67,5 +67,5 @@ for dataset_name, dataset in all_data.items():
 
         print(f"Done with {dataset_name} with k={k}.")
 
-with open('k_cluster_bench_m3.json', 'w') as f:
+with open('k_cluster_bench.json', 'w') as f:
     json.dump(bench, f, indent=2)

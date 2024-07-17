@@ -5,6 +5,8 @@ np.random.seed(42)
 
 print("Generating datasets...")
 
+random_weights = np.random.random_sample(2 ** 24)
+
 data = {
     'california_housing': datasets.fetch_california_housing()['data'][:, 0],
     'iris': datasets.load_iris()['data'][:, 0],

@@ -1,4 +1,6 @@
-from datasets import data, scaled_data
+import os
+os.environ['OMP_NUM_THREADS'] = '1'  # for single-threaded execution
+from datasets import data, scaled_data, random_weights
 from sklearn.cluster import KMeans
 from utils import calculate_inertia
 from time import time
@@ -15,7 +17,7 @@ all_data = {**data, **scaled_data}
 
 for dataset_name, dataset in all_data.items():
     bench[dataset_name] = {}
-    weights = np.random.random_sample(dataset.shape)
+    weights = random_weights[:len(dataset)]
     for k in k_to_test:
         if k > len(dataset):
             continue

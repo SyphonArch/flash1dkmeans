@@ -1,4 +1,4 @@
-from datasets import data, scaled_data
+from datasets import data, scaled_data, random_weights
 from flash1dkmeans import kmeans_1d, numba_kmeans_1d_two_cluster
 from utils import calculate_inertia
 from time import time
@@ -13,7 +13,7 @@ all_data = {**data, **scaled_data}
 
 for dataset_name, dataset in all_data.items():
     bench[dataset_name] = {}
-    weights = np.random.random_sample(dataset.shape).astype(np.float64)
+    weights = random_weights[:len(dataset)]
 
     print(f"Running flash1dkmeans on {dataset_name}")
 
@@ -64,5 +64,5 @@ for dataset_name, dataset in all_data.items():
 
     print(f"Done with {dataset_name}")
 
-with open('two_cluster_bench_m3.json', 'w') as f:
+with open('two_cluster_bench.json', 'w') as f:
     json.dump(bench, f, indent=2)
