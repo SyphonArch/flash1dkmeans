@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "flash1dkmeans"
 version = "0.1.2"
 authors = [
-  { name="Jake Hyun", email="jake.hyun@hotmail.com" },
+    { name = "Jake Hyun", email = "jake.hyun@hotmail.com" },
 ]
 description = "An optimized K-means implementation for the one-dimensional case."
 readme = "README.md"
@@ -21,7 +21,12 @@ dependencies = [
     "numpy~=2.0.0"
 ]
 
-
 [project.urls]
 Homepage = "https://github.com/SyphonArch/flash1dkmeans"
 Issues = "https://github.com/SyphonArch/flash1dkmeans/issues"
+
+[tool.hatch.build.targets.sdist]
+include = ["src/**"]
+
+[tool.hatch.build.targets.wheel]
+include = ["src/**"]
