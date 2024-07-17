@@ -1,10 +1,13 @@
 # flash1dkmeans
-An optimized K-means implementation for the one-dimensional case
+An optimized K-means implementation for the one-dimensional case.
 
 Exploits the fact that one-dimensional data can be sorted.
 
 For the lower level functions prefixed with `numba_`, Numba acceleration is used,
 so callers can utilize these functions within their own Numba-accelerated functions.
+
+Note that this library is **not an implementation of optimal 1D K-means**, which is known to be possible through dynamic programming approaches and entails $O(n)$ runtime.
+Instead, this is a $O(\log{n})$ optimization of the commonly used K-means++ initialization and Lloyd's algorithm - thus it should run faster at the cost of possible non-optimal clusterings - plus a novel optimal two-cluster specific algorithm, which indeed does produce optimal clusterings.
 
 ## Important Notice
 
