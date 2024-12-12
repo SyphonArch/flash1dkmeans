@@ -15,6 +15,11 @@ bench = {}  # store the time taken as well as the inertia
 
 all_data = {**data, **scaled_data}
 
+# warm-up on random data
+print("Warming up on random data...")
+kmeans = KMeans(n_clusters=4, max_iter=300, random_state=42)
+kmeans.fit(np.random.rand(1000).reshape(-1, 1), sample_weight=np.random.rand(1000))
+
 for dataset_name, dataset in all_data.items():
     bench[dataset_name] = {}
     weights = random_weights[:len(dataset)]

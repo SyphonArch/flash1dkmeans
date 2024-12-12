@@ -58,8 +58,6 @@ def numba_kmeans_1d_k_cluster(
         cluster_borders: np.ndarray
             The borders of the clusters
     """
-    assert n_clusters > 2, "n_clusters must be greater than 2, for 2 clusters use the faster two cluster implementation"
-
     # set random_state
     set_np_seed_njit(random_state)
 
@@ -116,8 +114,6 @@ def numba_kmeans_1d_k_cluster_unweighted(
         random_state=None,
 ):
     """Unweighted version of flash_1d_kmeans_k_cluster"""
-    assert n_clusters > 2, "n_clusters must be greater than 2, for 2 clusters use the faster two cluster implementation"
-
     # set random_state
     set_np_seed_njit(random_state)
 

@@ -7,7 +7,7 @@ For the lower level functions prefixed with `numba_`, Numba acceleration is used
 so callers can utilize these functions within their own Numba-accelerated functions.
 
 Note that this library is **not an implementation of optimal 1D K-means**, which is known to be possible through dynamic programming approaches and entails $O(n)$ runtime.
-Instead, this is a $O(\log{n})$ optimization of the commonly used K-means++ initialization and Lloyd's algorithm - thus it should run faster at the cost of possible non-optimal clusterings - plus a novel optimal two-cluster specific algorithm, which indeed does produce optimal clusterings.
+Instead, this is a $O(\log{n})$ optimization of the commonly used K-means++ initialization and Lloyd's algorithm - thus it should run faster at the cost of possible non-optimal clusterings.
 
 ## Important Notice
 
@@ -20,8 +20,10 @@ Numba caches the compiled functions, so execution times should stabilize after t
 
 ### Two clusters
 
-Guaranteed to find the optimal solution for two clusters by employing a clever binary search.  
-The algorithm is deterministic.
+Finds a Lloyd's algorithm solution (i.e. convergence) for the two-cluster case, in $O(\log{n})$ time.
+The algorithm utilizes binary search and is deterministic.
+The convergence is guaranteed, but the global minimum is not guaranteed.
+Desirable when a very fast and deterministic two-cluster K-means is needed.
 
 ### K clusters
 
@@ -54,20 +56,21 @@ In the figures below, we show the K-means clustering runtime on randomly generat
 
 | | |
 --- | ---
-![runtime comparison k=2](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig/runtime_comparison_k2.png) | ![runtime comparison k=16](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig/runtime_comparison_k16.png)
-![runtime comparison k=256](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig/runtime_comparison_k256.png) | ![runtime comparison k=512](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig/runtime_comparison_k512.png)
+![runtime comparison two cluster](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig_i9-13900K/runtime_comparison_two_cluster.png) | ![runtime comparison k=16](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig_i9-13900K/runtime_comparison_k16.png)
+![runtime comparison k=256](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig_i9-13900K/runtime_comparison_k256.png) | ![runtime comparison k=512](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig_i9-13900K/runtime_comparison_k512.png)
 
 You can confirm that `flash1dkmeans` is several orders of magnitude faster, even when measured with the wrapper function, including the sorting and prefix sum calculation overheads.
-Additionally, you can see that for the two-cluster case, the algorithm indeed is $O(\log{n})$ - the Numba function's runtime barely grows.
 
-These speeds are achieved while finding the <ins>optimal clustering for the two-cluster case</ins>, and running an <ins>optimized but mathematically equivalent algorithm to sklearn’s implementation for the k-cluster case</ins>, ensuring identical or better results apart from numerical errors and effects from randomness.
+These speeds are achieved while running an <ins>optimized but mathematically equivalent algorithm to sklearn’s implementation for the k-cluster algorithm</ins>, ensuring identical results apart from numerical errors and effects from randomness.
+
+Additionally, you can see that for the two-cluster algorithm, the algorithm indeed is $O(\log{n})$ - the Numba function's runtime barely grows. This algorithm <ins>does not use Lloyd's algorithm, but converges to a Lloyd's algorithm local minima in $O(\log{n})$ time</ins>.
 
 The figures below demonstrate this by comparing the squared error of the clusterings, on real and generated datasets obtained using scikit-learn.
 
 | | |
 --- | ---
-![inertia comparison k=2](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig/inertia_comparison_k2.png) | ![inertia comparison k=4](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig/inertia_comparison_k4.png)
-![inertia comparison k=16](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig/inertia_comparison_k16.png) | ![inertia comparison k=32](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig/inertia_comparison_k32.png)
+![inertia comparison k=2](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig_i9-13900K/inertia_comparison_k2.png) | ![inertia comparison k=4](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig_i9-13900K/inertia_comparison_k4.png)
+![inertia comparison k=16](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig_i9-13900K/inertia_comparison_k16.png) | ![inertia comparison k=32](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig_i9-13900K/inertia_comparison_k32.png)
 
 ## Installation
 ```bash
@@ -78,12 +81,16 @@ pip install flash1dkmeans
 
 ### Basic usage
 ```python
-from flash1dkmeans import kmeans_1d
+from flash1dkmeans import kmeans_1d, kmeans_1d_two_clusters
 
 data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
 k = 2
 
+# The optimized K-Means++ initialization and Lloyd's algorithm
 centroids, labels = kmeans_1d(data, k)
+
+# The faster two-cluster deterministic algorithm
+centroids, labels = kmeans_1d_two_clusters(data)
 ```
 
 ### More Options
@@ -95,13 +102,24 @@ data = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0])
 weights = np.random.random_sample(data.shape)
 k = 3
 
+# The optimized K-Means++ initialization and Lloyd's algorithm
 centroids, labels = kmeans_1d(
     data, k,
     sample_weights=weights,  # sample weights
     max_iter=100,  # maximum number of iterations
     random_state=42,  # random seed
 )
+
+# The faster two-cluster deterministic algorithm
+centroids, labels = kmeans_1d_two_clusters(
+    data,
+    sample_weights=weights,  # sample weights
+)
 ```
+
+#### Advanced Usage
+
+Optional arguments `is_sorted` can be set to `True` if the data is already sorted. Optional argument `return_cluster_borders` can be set to `True` to return the cluster borders (i.e. the indices where the clusters change) instead of the labels. Refer to the docstrings for more information.
 
 ### Even More Options
 The underlying Numba-accelerated function `numba_kmeans_1d_k_clusters` can be used directly for more control.
@@ -161,7 +179,7 @@ where multiple 1D K-means instances are run in parallel for LLM quantization.
 
 However, the algorithm is general and can be used for any 1D K-means problem.
 
-I have proved the validity for the two cluster case - detailed version of the proof might be posted in the future.
+I am currently working on my undergrad thesis, where I delve into the detailed explanations and proofs of the algorithms. The thesis will be linked here shortly.
 
 Feel free to leave issues or contact me at jakehyun@snu.ac.kr for inquiries.
 

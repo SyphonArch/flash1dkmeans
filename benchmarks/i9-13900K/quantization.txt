@@ -1,0 +1,13 @@
+Simulating Any-Precision LLM Quantization
+Weight channel size: 14336
+
+Sklearn 100 runs time: 10.984 seconds
+Sklearn recursive clustering time: 10.551 seconds
+Sklearn final centroid count: 256
+
+Flash1dkmeans 100 runs time: 0.090 seconds
+Flash1dkmeans recursive clustering time: 0.034 seconds
+Flash1dkmeans final centroid count: 256
+
+Total speedup: 121.805x
+Upscaling speedup: 306.335x

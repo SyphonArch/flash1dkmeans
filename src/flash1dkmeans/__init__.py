@@ -1,3 +1,3 @@
-from .main import kmeans_1d
+from .main import kmeans_1d, kmeans_1d_two_cluster
 from .two_cluster import numba_kmeans_1d_two_cluster, numba_kmeans_1d_two_cluster_unweighted
 from .k_cluster import numba_kmeans_1d_k_cluster, numba_kmeans_1d_k_cluster_unweighted
