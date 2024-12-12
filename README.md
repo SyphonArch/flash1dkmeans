@@ -1,13 +1,13 @@
 # flash1dkmeans
-An optimized K-means implementation for the one-dimensional case.
+An optimized k-means implementation for the one-dimensional case.
 
 Exploits the fact that one-dimensional data can be sorted.
 
 For the lower level functions prefixed with `numba_`, Numba acceleration is used,
 so callers can utilize these functions within their own Numba-accelerated functions.
 
-Note that this library is **not an implementation of optimal 1D K-means**, which is known to be possible through dynamic programming approaches and entails $O(n)$ runtime.
-Instead, this is a $O(\log{n})$ optimization of the commonly used K-means++ initialization and Lloyd's algorithm - thus it should run faster at the cost of possible non-optimal clusterings.
+Note that this library is **not an implementation of optimal 1D k-means**, which is known to be possible through dynamic programming approaches and entails $O(n)$ runtime.
+Instead, this is a $O(\log{n})$ optimization of the commonly used k-means++ initialization and Lloyd's algorithm - thus it should run faster at the cost of possible non-optimal clusterings.
 
 ## Important Notice
 
@@ -23,11 +23,11 @@ Numba caches the compiled functions, so execution times should stabilize after t
 Finds a Lloyd's algorithm solution (i.e. convergence) for the two-cluster case, in $O(\log{n})$ time.
 The algorithm utilizes binary search and is deterministic.
 The convergence is guaranteed, but the global minimum is not guaranteed.
-Desirable when a very fast and deterministic two-cluster K-means is needed.
+Desirable when a very fast and deterministic two-cluster k-means is needed.
 
 ### K clusters
 
-Uses the K-means++ initialization algorithm to find the initial centroids.
+Uses the k-means++ initialization algorithm to find the initial centroids.
 Then uses the Lloyd's algorithm to find the final centroids, except with optimizations for the one-dimensional case.
 The algorithm is non-deterministic, but you can provide a random seed for reproducibility.
 
@@ -38,21 +38,21 @@ For number of elements $n$, number of clusteres $k$, number of Lloyd's algorithm
 - **Two clusters**: $O(\log{n})$  
   ($+ O(n)$ for prefix sum calculation if not provided, $+ O(n \cdot \log {n})$ for sorting if not sorted)
 - **$k$ clusters**: $O(k ^ 2 \cdot \log {k} \cdot \log {n}) + O(i \cdot \log {n} \cdot k)$  
-  (The first term is for K-means++ initialization, and the latter for Lloyd's algorithm)  
+  (The first term is for k-means++ initialization, and the latter for Lloyd's algorithm)  
   ($+ O(n)$ for prefix sum calculation if not provided, $+ O(n \cdot \log {n})$ for sorting if not sorted)
 
-This is a significant improvement over common K-means implementations.
-For example, general implementations for $d$-dimensional data using a combination of greedy K-means++ initialization and Lloyd's algorithm for convergence,
+This is a significant improvement over common k-means implementations.
+For example, general implementations for $d$-dimensional data using a combination of greedy k-means++ initialization and Lloyd's algorithm for convergence,
 when given one-dimensional data, spends $O(k ^ 2 \cdot \log {k} \cdot n)$ time in initialization and $O(i \cdot n \cdot k)$ time in iterations.
 
 **Note that you must use the underlying `numba_` functions directly in order to directly supply prefix sums and skip sorting.**
 
 ## How fast is it?
-Here we compare `flash1dkmeans` against one of the most commonly used K-means implementations, [sklearn.cluster.KMeans](https://scikit-learn.org/stable/modules/generated/sklearn.cluster.KMeans.html).
+Here we compare `flash1dkmeans` against one of the most commonly used k-means implementations, [sklearn.cluster.KMeans](https://scikit-learn.org/stable/modules/generated/sklearn.cluster.KMeans.html).
 
-In the figures below, we show the K-means clustering runtime on randomly generated data of various sizes.
+In the figures below, we show the k-means clustering runtime on randomly generated data of various sizes.
 - **flash1dkmeans** measures the wrapper function kmeans_1d, which includes the sorting and prefix sum calculation overheads.  
-- **flash1dkemeans_numba** measures the underlying Numba-accelerated functions, excluding the sorting and prefix sum calculation overheads. (A case where this performance is useful is when you only have to sort once, while calling K-means multiple times on different segments of the same data - or if you already have the sorted prefix sum calculations ready. Both happened to be the case for [Any-Precision-LLM](https://github.com/SNU-ARC/any-precision-llm).)
+- **flash1dkemeans_numba** measures the underlying Numba-accelerated functions, excluding the sorting and prefix sum calculation overheads. (A case where this performance is useful is when you only have to sort once, while calling k-means multiple times on different segments of the same data - or if you already have the sorted prefix sum calculations ready. Both happened to be the case for [Any-Precision-LLM](https://github.com/SNU-ARC/any-precision-llm).)
 
 | | |
 --- | ---
@@ -65,7 +65,7 @@ These speeds are achieved while running an <ins>optimized but mathematically equ
 
 Additionally, you can see that for the two-cluster algorithm, the algorithm indeed is $O(\log{n})$ - the Numba function's runtime barely grows. This algorithm <ins>does not use Lloyd's algorithm, but converges to a Lloyd's algorithm local minima in $O(\log{n})$ time</ins>.
 
-The figures below demonstrate this by comparing the squared error of the clusterings, on real and generated datasets obtained using scikit-learn.
+The figures below compare the squared error of the clusterings on real and generated datasets obtained using scikit-learn---the results demonstrate that `flash1dkmeans` indeed produces clustering results near identical to those of scikit-learn's k-means implementation.
 
 | | |
 --- | ---
@@ -86,7 +86,7 @@ from flash1dkmeans import kmeans_1d, kmeans_1d_two_clusters
 data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
 k = 2
 
-# The optimized K-Means++ initialization and Lloyd's algorithm
+# The optimized k-means++ initialization and Lloyd's algorithm
 centroids, labels = kmeans_1d(data, k)
 
 # The faster two-cluster deterministic algorithm
@@ -102,7 +102,7 @@ data = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0])
 weights = np.random.random_sample(data.shape)
 k = 3
 
-# The optimized K-Means++ initialization and Lloyd's algorithm
+# The optimized k-means++ initialization and Lloyd's algorithm
 centroids, labels = kmeans_1d(
     data, k,
     sample_weights=weights,  # sample weights
@@ -175,9 +175,9 @@ Refer to the docstrings for more information.
 ## Notes
 
 This repository has been created to be used in [Any-Precision-LLM](https://github.com/SNU-ARC/any-precision-llm) project,
-where multiple 1D K-means instances are run in parallel for LLM quantization.
+where multiple 1D k-means instances are run in parallel for LLM quantization.
 
-However, the algorithm is general and can be used for any 1D K-means problem.
+However, the algorithm is general and can be used for any 1D k-means problem.
 
 I am currently working on my undergrad thesis, where I delve into the detailed explanations and proofs of the algorithms. The thesis will be linked here shortly.
 
