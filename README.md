@@ -69,7 +69,7 @@ The figures below demonstrate this by comparing the squared error of the cluster
 
 | | |
 --- | ---
-![inertia comparison k=2](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig_i9-13900K/inertia_comparison_k2.png) | ![inertia comparison k=4](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig_i9-13900K/inertia_comparison_k4.png)
+![inertia comparison two cluster](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig_i9-13900K/inertia_comparison_two_cluster.png) | ![inertia comparison k=4](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig_i9-13900K/inertia_comparison_k4.png)
 ![inertia comparison k=16](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig_i9-13900K/inertia_comparison_k16.png) | ![inertia comparison k=32](https://raw.githubusercontent.com/SyphonArch/flash1dkmeans/main/benchmarks/fig_i9-13900K/inertia_comparison_k32.png)
 
 ## Installation
