@@ -65,7 +65,7 @@ These speeds are achieved while running an <ins>optimized but mathematically equ
 
 Additionally, you can see that for the two-cluster algorithm, the algorithm indeed is $O(\log{n})$ - the Numba function's runtime barely grows. This algorithm <ins>does not use Lloyd's algorithm, but converges to a Lloyd's algorithm local minima in $O(\log{n})$ time</ins>.
 
-The figures below compare the squared error of the clusterings on real and generated datasets obtained using scikit-learn---the results demonstrate that `flash1dkmeans` indeed produces clustering results near identical to those of scikit-learn's k-means implementation.
+The figures below compare the squared error of the clusterings on real and generated datasets obtained using scikit-learn. Results demonstrate that `flash1dkmeans` indeed produces clustering results near identical to those of scikit-learn's k-means implementation.
 
 | | |
 --- | ---
