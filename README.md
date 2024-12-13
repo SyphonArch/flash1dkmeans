@@ -7,7 +7,7 @@ For the lower level functions prefixed with `numba_`, Numba acceleration is used
 so callers can utilize these functions within their own Numba-accelerated functions.
 
 Note that this library is **not an implementation of optimal 1D k-means**, which is known to be possible through dynamic programming approaches and entails $O(n)$ runtime.
-Instead, this is a $O(\log{n})$ optimization of the commonly used k-means++ initialization and Lloyd's algorithm - thus it should run faster at the cost of possible non-optimal clusterings.
+Instead, this is a $O(\log{n})$ optimization of the commonly used (greedy) k-means++ initialization and Lloyd's algorithm - thus it should run faster at the cost of possible non-optimal clusterings.
 
 ## Important Notice
 
@@ -27,7 +27,7 @@ Desirable when a very fast and deterministic two-cluster k-means is needed.
 
 ### K clusters
 
-Uses the k-means++ initialization algorithm to find the initial centroids.
+Uses the greedy k-means++ initialization algorithm to find the initial centroids.
 Then uses the Lloyd's algorithm to find the final centroids, except with optimizations for the one-dimensional case.
 The algorithm is non-deterministic, but you can provide a random seed for reproducibility.
 
@@ -38,7 +38,7 @@ For number of elements $n$, number of clusteres $k$, number of Lloyd's algorithm
 - **Two clusters**: $O(\log{n})$  
   ($+ O(n)$ for prefix sum calculation if not provided, $+ O(n \cdot \log {n})$ for sorting if not sorted)
 - **$k$ clusters**: $O(k ^ 2 \cdot \log {k} \cdot \log {n}) + O(i \cdot \log {n} \cdot k)$  
-  (The first term is for k-means++ initialization, and the latter for Lloyd's algorithm)  
+  (The first term is for greedy k-means++ initialization, and the latter for Lloyd's algorithm)  
   ($+ O(n)$ for prefix sum calculation if not provided, $+ O(n \cdot \log {n})$ for sorting if not sorted)
 
 This is a significant improvement over common k-means implementations.
