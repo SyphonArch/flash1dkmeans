@@ -86,7 +86,7 @@ from flash1dkmeans import kmeans_1d, kmeans_1d_two_clusters
 data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
 k = 2
 
-# The optimized $k$-means++ initialization and Lloyd's algorithm
+# The optimized k-means++ initialization and Lloyd's algorithm
 centroids, labels = kmeans_1d(data, k)
 
 # The faster two-cluster deterministic algorithm
@@ -102,7 +102,7 @@ data = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0])
 weights = np.random.random_sample(data.shape)
 k = 3
 
-# The optimized $k$-means++ initialization and Lloyd's algorithm
+# The optimized k-means++ initialization and Lloyd's algorithm
 centroids, labels = kmeans_1d(
     data, k,
     sample_weights=weights,  # sample weights
