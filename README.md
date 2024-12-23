@@ -38,12 +38,12 @@ The algorithm is non-deterministic, but you can provide a random seed for reprod
 For number of elements $n$, number of clusteres $k$, number of Lloyd's algorithm iterations $i$, and assuming one-dimensional data (which is the only case covered by this implementation):
 
 - **two-cluster algorithm**: $O(\log{n})$  
-  ($+ O(n)$ for prefix sum calculation if not provided, $+ O(n \cdot \log {n})$ for sorting if not sorted)
-- **$k$-cluster algorithm**: $O(k ^ 2 \cdot \log {k} \cdot \log {n}) + O(i \cdot \log {n} \cdot k)$  
+  ($+ O(n)$ for prefix sum calculation if not provided, $+ O(n \cdot \log{n})$ for sorting if not sorted)
+- **$k$-cluster algorithm**: $O(k ^ 2 \cdot \log{k} \cdot \log{n}) + O(i \cdot \log{n} \cdot k)$  
   (The first term is for greedy $k$-means++ initialization, and the latter for Lloyd's algorithm)  
-  ($+ O(n)$ for prefix sum calculation if not provided, $+ O(n \cdot \log {n})$ for sorting if not sorted)
+  ($+ O(n)$ for prefix sum calculation if not provided, $+ O(n \cdot \log{n})$ for sorting if not sorted)
 
-This approach significantly improves upon standard $k$-means implementations. For one-dimensional data, general methods using greedy $k$-means++ initialization and Lloyd's algorithm require $O(k \cdot \log k \cdot n)$ time for initialization and $O(i \cdot n \cdot k)$ time per iteration. In our method, the $k \log k$ term increases to $k^2$, but the $n$ term decreases to $\log n$, and this reduction in $n$ far outweighs the increase in $k$ for practical values of $n$ and $k$. Experimental benchmarks confirm these speedups. (All complexities assume $2 + \log k$ local trials for the greedy $k$-means++ initialization.)
+This approach significantly improves upon standard $k$-means implementations. For one-dimensional data, general methods using greedy $k$-means++ initialization and Lloyd's algorithm require $O(k \cdot \log{k} \cdot n)$ time for initialization and $O(i \cdot n \cdot k)$ time per iteration. In our method, the $k \cdot \log{k}$ term increases to $k^2$, but the $n$ term decreases to $\log{n}$, and this reduction in $n$ far outweighs the increase in $k$ for practical values of $n$ and $k$. Experimental benchmarks confirm these speedups. (All complexities assume $2 + \log{k}$ local trials for the greedy $k$-means++ initialization.)
 
 **Note that you must use the underlying `numba_` functions directly in order to directly supply prefix sums and skip sorting.**
 
