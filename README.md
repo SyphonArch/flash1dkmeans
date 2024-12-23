@@ -18,14 +18,14 @@ Numba caches the compiled functions, so execution times should stabilize after t
 
 ## Features
 
-### Two clusters
+### two-cluster algorithm
 
 Finds a Lloyd's algorithm solution (i.e. convergence) for the two-cluster case, in $O(\log{n})$ time.
 The algorithm utilizes binary search and is deterministic.
 The convergence is guaranteed, but the global minimum is not guaranteed.
 Desirable when a very fast and deterministic two-cluster $k$-means is needed.
 
-### K clusters
+### $k$-cluster algorithm
 
 Uses the greedy $k$-means++ initialization algorithm to find the initial centroids.
 Then uses the Lloyd's algorithm to find the final centroids, except with optimizations for the one-dimensional case.
@@ -37,9 +37,9 @@ The algorithm is non-deterministic, but you can provide a random seed for reprod
 
 For number of elements $n$, number of clusteres $k$, number of Lloyd's algorithm iterations $i$, and assuming one-dimensional data (which is the only case covered by this implementation):
 
-- **Two clusters**: $O(\log{n})$  
+- **two-cluster algorithm**: $O(\log{n})$  
   ($+ O(n)$ for prefix sum calculation if not provided, $+ O(n \cdot \log {n})$ for sorting if not sorted)
-- **$k$ clusters**: $O(k ^ 2 \cdot \log {k} \cdot \log {n}) + O(i \cdot \log {n} \cdot k)$  
+- **$k$-cluster algorithm**: $O(k ^ 2 \cdot \log {k} \cdot \log {n}) + O(i \cdot \log {n} \cdot k)$  
   (The first term is for greedy $k$-means++ initialization, and the latter for Lloyd's algorithm)  
   ($+ O(n)$ for prefix sum calculation if not provided, $+ O(n \cdot \log {n})$ for sorting if not sorted)
 
@@ -51,7 +51,7 @@ This approach significantly improves upon standard $k$-means implementations. Fo
 Here we compare `flash1dkmeans` against one of the most commonly used $k$-means implementations, [sklearn.cluster.KMeans](https://scikit-learn.org/stable/modules/generated/sklearn.cluster.KMeans.html).
 
 In the figures below, we show the $k$-means clustering runtime on randomly generated data of various sizes.
-- **flash1dkmeans** measures the wrapper function kmeans_1d, which includes the sorting and prefix sum calculation overheads.  
+- **flash1dkmeans** measures the wrapper function `kmeans_1d`, which includes the sorting and prefix sum calculation overheads.  
 - **flash1dkemeans_numba** measures the underlying Numba-accelerated functions, excluding the sorting and prefix sum calculation overheads. (A case where this performance is useful is when you only have to sort once, while calling $k$-means multiple times on different segments of the same data - or if you already have the sorted prefix sum calculations ready. Both happened to be the case for [Any-Precision-LLM](https://github.com/SNU-ARC/any-precision-llm).)
 
 | | |
@@ -61,7 +61,7 @@ In the figures below, we show the $k$-means clustering runtime on randomly gener
 
 You can confirm that `flash1dkmeans` is several orders of magnitude faster, even when measured with the wrapper function, including the sorting and prefix sum calculation overheads.
 
-These speeds are achieved while running an <ins>optimized but mathematically equivalent algorithm to sklearn’s implementation for the k-cluster algorithm</ins>, ensuring identical results apart from numerical errors and effects from randomness.
+These speeds are achieved while running an <ins>optimized but mathematically equivalent algorithm to sklearn’s implementation for the $k$-cluster algorithm</ins>, ensuring identical results apart from numerical errors and effects from randomness.
 
 Additionally, you can see that for the two-cluster algorithm, the algorithm indeed is $O(\log{n})$ - the Numba function's runtime barely grows. This algorithm <ins>does not use Lloyd's algorithm, but converges to a Lloyd's algorithm local minima in $O(\log{n})$ time</ins>.
 
