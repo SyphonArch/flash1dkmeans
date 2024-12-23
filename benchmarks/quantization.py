@@ -6,7 +6,7 @@ from sklearn.cluster import KMeans
 from time import time
 from flash1dkmeans import numba_kmeans_1d_two_cluster, numba_kmeans_1d_k_cluster
 
-with open('Llama-3-8B_mlp_down_proj_214.pkl', 'rb') as f:
+with open('Llama-3-8B_8_mlp_down_proj_214.pkl', 'rb') as f:
     data = pickle.load(f)
 
 print("Simulating Any-Precision LLM Quantization")

@@ -29,8 +29,7 @@ def numba_kmeans_1d_k_cluster(
 ):
     """An optimized kmeans for 1D data with n clusters.
     Exploits the fact that the data is 1D to optimize the calculations.
-    Time complexity: O(n_clusters * log(n_clusters) * log(len(X)) * n_clusters + max_iter * log(len(X)) * n_clusters)
-                      = O(k ^ 2 * log(k) * log(n) + max_iter * log(n) * k)
+    Time complexity: O(k ^ 2 * log(k) * log(n) + i * log(n) * k)
 
     Args:
         sorted_X: np.ndarray
@@ -161,7 +160,8 @@ def numba_kmeans_1d_k_cluster_unweighted(
 @numba.njit(cache=True)
 def _rand_choice_prefix_sum(arr, prob_prefix_sum, start_idx, stop_idx):
     """Randomly choose an element from arr according to the probability distribution given by prob_prefix_sum
-    Time complexity: O(log(n))
+
+    Time complexity: O(log n)
 
     Args:
         arr: np.ndarray
@@ -195,7 +195,7 @@ def _centroids_to_cluster_borders(X, sorted_centroids, start_idx, stop_idx):
     The cluster borders are where the clusters are divided.
     The centroids must be sorted.
 
-    Time complexity: O(log(len(X)) * len(centroids))
+    Time complexity: O(k * log n)
 
     Args:
         X: np.ndarray
@@ -226,7 +226,7 @@ def _calculate_inertia(sorted_centroids, centroid_ranges,
     The inertia is the sum of the squared distances of each sample to the closest centroid.
     The calculations are done efficiently using prefix sums.
 
-    Time complexity: O(len(centroids))
+    Time complexity: O(k)
 
     Args:
         sorted_centroids: np.ndarray
@@ -310,7 +310,7 @@ def _rand_choice_centroids(X, centroids,
     """Randomly choose sample_size elements from X, weighted by the distance to the closest centroid.
     The weighted logic is implemented efficiently by utilizing the _calculate_inertia function.
 
-    Time complexity: O(sample_size * log(len(X)) * len(centroids))
+    Time complexity: O(l * k * log n)
 
     Args:
         X: np.ndarray
@@ -335,21 +335,21 @@ def _rand_choice_centroids(X, centroids,
     Returns:
         np.ndarray: The chosen samples
     """
-    sorted_centroids = np.sort(centroids)
-    cluster_borders = _centroids_to_cluster_borders(X, sorted_centroids, start_idx, stop_idx)
-    total_inertia = _calculate_inertia(sorted_centroids, cluster_borders,
+    sorted_centroids = np.sort(centroids)  # O(k log k)
+    cluster_borders = _centroids_to_cluster_borders(X, sorted_centroids, start_idx, stop_idx)  # O(k log n)
+    total_inertia = _calculate_inertia(sorted_centroids, cluster_borders,  # O(k)
                                        weights_prefix_sum, weighted_X_prefix_sum,
                                        weighted_X_squared_prefix_sum, stop_idx)
     selectors = np.random.random_sample(sample_size) * total_inertia
     results = np.empty(sample_size, dtype=centroids.dtype)
 
-    for i in range(sample_size):
+    for i in range(sample_size):  # O(l k log n)
         selector = selectors[i]
         floor = start_idx + 1
         ceiling = stop_idx
         while floor < ceiling:
             stop_idx_cand = (floor + ceiling) // 2
-            inertia = _calculate_inertia(sorted_centroids, cluster_borders,
+            inertia = _calculate_inertia(sorted_centroids, cluster_borders,  # O(k)
                                          weights_prefix_sum, weighted_X_prefix_sum,
                                          weighted_X_squared_prefix_sum, stop_idx_cand)
             if inertia < selector:
@@ -398,8 +398,7 @@ def _kmeans_plusplus(X, n_clusters,
     """An optimized version of the kmeans++ initialization algorithm for 1D data.
     The algorithm is optimized for 1D data and utilizes prefix sums for efficient calculations.
 
-    Time complexity: O(n_clusters * (log(n_clusters) * log(len(X)) * n_clusters + log(len(X)) * n_clusters + n_clusters))
-                     = O(k ^ 2 * log(k) * log(n))
+    Time complexity: = O(k ^ 2 * log k * log n)
 
     Args:
         X: np.ndarray
@@ -420,12 +419,13 @@ def _kmeans_plusplus(X, n_clusters,
     n_local_trials = 2 + int(np.log(n_clusters))
 
     # First centroid is chosen randomly according to sample_weight
-    centroids[0] = _rand_choice_prefix_sum(X, weights_prefix_sum, start_idx, stop_idx)
+    centroids[0] = _rand_choice_prefix_sum(X, weights_prefix_sum, start_idx, stop_idx)  # O(log n)
 
-    for c_id in range(1, n_clusters):
+    for c_id in range(1, n_clusters):  # O(k^2 l log n)
         # Choose the next centroid randomly according to the weighted distances
         # Sample n_local_trials candidates and choose the best one
-        centroid_candidates = _rand_choice_centroids(
+
+        centroid_candidates = _rand_choice_centroids(  # O(l k log n)
             X, centroids[:c_id],
             weights_prefix_sum, weighted_X_prefix_sum,
             weighted_X_squared_prefix_sum, n_local_trials,
@@ -434,11 +434,12 @@ def _kmeans_plusplus(X, n_clusters,
 
         best_inertia = np.inf
         best_centroid = None
-        for i in range(len(centroid_candidates)):
+        for i in range(len(centroid_candidates)): # O(l k log n)
+            # O(k log k + k log n + k) = O(k log n), as k <= n
             centroids[c_id] = centroid_candidates[i]
-            sorted_centroids = np.sort(centroids[:c_id + 1])
-            centroid_ranges = _centroids_to_cluster_borders(X, sorted_centroids, start_idx, stop_idx)
-            inertia = _calculate_inertia(sorted_centroids, centroid_ranges,
+            sorted_centroids = np.sort(centroids[:c_id + 1]) # O(k log k), I think we could avoid centroid sorting and use some linear algorithm, but the gain would be minimal, especially considering that k <= n, and most times k << n
+            centroid_ranges = _centroids_to_cluster_borders(X, sorted_centroids, start_idx, stop_idx)  # O(k log n)
+            inertia = _calculate_inertia(sorted_centroids, centroid_ranges,  # O(k)
                                          weights_prefix_sum, weighted_X_prefix_sum,
                                          weighted_X_squared_prefix_sum, stop_idx)
             if inertia < best_inertia:
