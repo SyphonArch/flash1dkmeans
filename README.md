@@ -174,7 +174,7 @@ Refer to the docstrings for more information.
 
 ## Notes
 
-This repository has been created to be used in [Any-Precision-LLM](https://github.com/SNU-ARC/any-precision-llm) project,
+This repository has been created to be used in [Any-Precision LLM](https://github.com/SNU-ARC/any-precision-llm) project,
 where multiple 1D $k$-means instances are run in parallel for LLM quantization.
 
 However, the algorithm is general and can be used for any 1D $k$-means problem.
