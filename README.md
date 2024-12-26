@@ -1,4 +1,4 @@
-# flash1dkmeans
+# flash1dkmeans [[Paper](https://arxiv.org/abs/2412.15295)]
 An optimized $k$-means implementation for the one-dimensional case.
 
 Exploits the fact that one-dimensional data can be sorted.
