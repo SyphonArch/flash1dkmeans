@@ -1,4 +1,4 @@
-# flash1dkmeans [[Paper](https://arxiv.org/abs/2412.15295)]
+# flash1dkmeans: Log-Time K-Means Clustering for 1D Data [[Paper](https://arxiv.org/abs/2412.15295)]
 An optimized $k$-means implementation for the one-dimensional case.
 
 Exploits the fact that one-dimensional data can be sorted.
