@@ -52,7 +52,7 @@ Here we compare `flash1dkmeans` against one of the most commonly used $k$-means 
 
 In the figures below, we show the $k$-means clustering runtime on randomly generated data of various sizes.
 - **flash1dkmeans** measures the wrapper function `kmeans_1d`, which includes the sorting and prefix sum calculation overheads.  
-- **flash1dkemeans_numba** measures the underlying Numba-accelerated functions, excluding the sorting and prefix sum calculation overheads. (A case where this performance is useful is when you only have to sort once, while calling $k$-means multiple times on different segments of the same data - or if you already have the sorted prefix sum calculations ready. Both happened to be the case for [Any-Precision LLM](https://github.com/SNU-ARC/any-precision-llm).)
+- **flash1dkmeans_numba** measures the underlying Numba-accelerated functions, excluding the sorting and prefix sum calculation overheads. (A case where this performance is useful is when you only have to sort once, while calling $k$-means multiple times on different segments of the same data - or if you already have the sorted prefix sum calculations ready. Both happened to be the case for [Any-Precision LLM](https://github.com/SNU-ARC/any-precision-llm).)
 
 | | |
 --- | ---
