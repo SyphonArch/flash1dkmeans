@@ -10,6 +10,43 @@ from flash1dkmeans.two_cluster import (
 
 
 class TwoClusterCentroidTests(unittest.TestCase):
+    def test_equal_values_keep_nonempty_clusters(self):
+        for value in (0.3, -0.3):
+            for offset in (0, 1):
+                data = np.array([0.0] * offset + [value] * 3)
+                start, stop = offset, len(data)
+                for weighted in (False, True):
+                    with self.subTest(value=value, offset=offset, weighted=weighted):
+                        if weighted:
+                            centroids, borders = numba_kmeans_1d_two_cluster(
+                                data, np.cumsum(np.ones(len(data))),
+                                np.cumsum(data), start, stop,
+                            )
+                        else:
+                            centroids, borders = numba_kmeans_1d_two_cluster_unweighted(
+                                data, np.cumsum(data), start, stop,
+                            )
+                        self.assertGreater(borders[1], start)
+                        self.assertLess(borders[1], stop)
+                        np.testing.assert_allclose(centroids, [value, value])
+
+    def test_sparse_weights_keep_positive_weight_in_both_clusters(self):
+        for value in (0.3, -0.3):
+            for offset in (0, 1):
+                for active in ((0, 1), (1, 2), (2, 3), (0, 3)):
+                    with self.subTest(value=value, offset=offset, active=active):
+                        data = np.array([0.0] * offset + [value] * 4)
+                        weights = np.zeros(len(data))
+                        weights[:offset] = 1
+                        weights[np.array(active) + offset] = 1
+                        centroids, borders = numba_kmeans_1d_two_cluster(
+                            data, np.cumsum(weights), np.cumsum(data * weights),
+                            offset, len(data),
+                        )
+                        for left, right in zip(borders[:-1], borders[1:]):
+                            self.assertGreater(weights[left:right].sum(), 0)
+                        np.testing.assert_allclose(centroids, [value, value])
+
     def test_public_api_final_split(self):
         data = np.array([0, 0, 1, 1, 100], dtype=np.float64)
         for weights in (None, np.ones(5, dtype=np.float64)):

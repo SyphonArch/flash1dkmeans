@@ -97,22 +97,17 @@ def numba_kmeans_1d_two_cluster(
 
     # We will do a search for the division point,
     # where we search for the optimum number of elements in the first cluster
-    # We don't want empty clusters, so we set the floor and ceiling to start_idx + 1 and stop_idx - 1
-    floor = start_idx + 1
-    ceiling = stop_idx - 1
+    # Restrict the search to splits with positive weight on both sides.
+    preceding_weight = weights_prefix_sum[start_idx - 1] if start_idx > 0 else 0.0
+    floor = start_idx + np.searchsorted(
+        sample_weight_prefix_sum_within_range, preceding_weight, side='right'
+    ) + 1
+    ceiling = start_idx + final_increase_idx
 
     while floor < ceiling:
         division_point = (floor + ceiling) // 2
-        # If the left cluster has no weight, we need to move the floor up
         left_weight_sum = query_prefix_sum(weights_prefix_sum, start_idx, division_point)
-        if left_weight_sum == 0:
-            floor = division_point + 1
-            continue
         right_weight_sum = query_prefix_sum(weights_prefix_sum, division_point, stop_idx)
-        # If the right cluster has no weight, we need to move the ceiling down
-        if right_weight_sum == 0:
-            ceiling = division_point - 1
-            continue
 
         left_centroid = query_prefix_sum(weighted_X_prefix_sum, start_idx, division_point) / left_weight_sum
         right_centroid = query_prefix_sum(weighted_X_prefix_sum, division_point, stop_idx) / right_weight_sum
@@ -125,7 +120,8 @@ def numba_kmeans_1d_two_cluster(
             else:
                 floor = division_point + 1
         else:
-            ceiling = division_point - 1
+            # Keep the last candidate if rounding moves the midpoint below it.
+            ceiling = max(floor, division_point - 1)
 
     # recalculate division point based on final floor and ceiling
     division_point = (floor + ceiling) // 2
@@ -204,7 +200,8 @@ def numba_kmeans_1d_two_cluster_unweighted(
             else:
                 floor = division_point + 1
         else:
-            ceiling = division_point - 1
+            # Keep the last candidate if rounding moves the midpoint below it.
+            ceiling = max(floor, division_point - 1)
 
     # recalculate division point based on final floor and ceiling
     division_point = (floor + ceiling) // 2
