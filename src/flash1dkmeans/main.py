@@ -21,7 +21,7 @@ def kmeans_1d(
     Exploits the fact that 1D data can be sorted.
 
     Time complexity:
-        O(n_clusters * 2 + log(n_clusters) * log(n) + max_iter * log(n) * n_clusters)
+        O(n_clusters ^ 2 + n_clusters * log(n_clusters) * log(n) + max_iter * log(n) * n_clusters)
         (+ (O(n) for prefix sum calculation if not provided))
 
     Args:

@@ -39,11 +39,13 @@ For number of elements $n$, number of clusteres $k$, number of Lloyd's algorithm
 
 - **two-cluster algorithm**: $O(\log{n})$  
   ($+ O(n)$ for prefix sum calculation if not provided, $+ O(n \cdot \log{n})$ for sorting if not sorted)
-- **$k$-cluster algorithm**: $O(k ^ 2 \cdot \log{k} \cdot \log{n}) + O(i \cdot \log{n} \cdot k)$  
+- **$k$-cluster algorithm**: $O(k ^ 2 + k \cdot \log{k} \cdot \log{n}) + O(i \cdot \log{n} \cdot k)$  
   (The first term is for greedy $k$-means++ initialization, and the latter for Lloyd's algorithm)  
   ($+ O(n)$ for prefix sum calculation if not provided, $+ O(n \cdot \log{n})$ for sorting if not sorted)
 
-This approach significantly improves upon standard $k$-means implementations. For one-dimensional data, general methods using greedy $k$-means++ initialization and Lloyd's algorithm require $O(k \cdot \log{k} \cdot n)$ time for initialization and $O(i \cdot n \cdot k)$ time per iteration. In our method, the $k \cdot \log{k}$ term increases to $k^2$, but the $n$ term decreases to $\log{n}$, and this reduction in $n$ far outweighs the increase in $k$ for practical values of $n$ and $k$. Experimental benchmarks confirm these speedups. (All complexities assume $2 + \log{k}$ local trials for the greedy $k$-means++ initialization.)
+This approach significantly improves upon standard $k$-means implementations. For one-dimensional data, general methods using greedy $k$-means++ initialization and Lloyd's algorithm require $O(k \cdot \log{k} \cdot n)$ time for initialization and $O(i \cdot n \cdot k)$ time for $i$ iterations. In our method, the $n$ factor becomes $\log{n}$. The initialization keeps the sorted centroids, cluster borders and per-cluster squared errors up to date as centroids are added: sampling a candidate takes a binary search over the cumulative cluster inertia for its cluster, $O(\log{k})$, and one over prefix sums within that cluster, $O(\log{n})$, evaluating a candidate takes $O(\log{k} + \log{n})$ because a new centroid only changes the clusters of its two neighbouring centroids, and adding a centroid updates these arrays in $O(k)$, which gives the $k^2$ term. Experimental benchmarks confirm these speedups. (All complexities assume $2 + \log{k}$ local trials for the greedy $k$-means++ initialization.)
+
+The initialization is faster than the one described in [the thesis](https://arxiv.org/abs/2412.15295) (Section 3.1.2), which recomputes all $k$ clusters for every candidate and costs $O(l \cdot k^2 \cdot \log{n})$ for $l$ local trials. The incremental updates described above reduce this to $O(k^2 + l \cdot k \cdot (\log{k} + \log{n}))$, with the same result in exact arithmetic. The two-cluster algorithm and Lloyd's iterations are as in the thesis.
 
 **Note that you must use the underlying `numba_` functions directly in order to directly supply prefix sums and skip sorting.**
 
