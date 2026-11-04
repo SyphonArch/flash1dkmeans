@@ -63,6 +63,7 @@ def numba_kmeans_1d_k_cluster(
     cluster_borders = np.empty(n_clusters + 1, dtype=ARRAY_INDEX_DTYPE)
     cluster_borders[0] = start_idx
     cluster_borders[-1] = stop_idx
+    cluster_borders[1:-1] = -1  # not valid borders, so that the first iteration always runs
 
     centroids = _kmeans_plusplus(
         sorted_X, n_clusters,
@@ -119,6 +120,7 @@ def numba_kmeans_1d_k_cluster_unweighted(
     cluster_borders = np.empty(n_clusters + 1, dtype=ARRAY_INDEX_DTYPE)
     cluster_borders[0] = start_idx
     cluster_borders[-1] = stop_idx
+    cluster_borders[1:-1] = -1  # not valid borders, so that the first iteration always runs
 
     centroids = _kmeans_plusplus_unweighted(
         sorted_X, n_clusters,
