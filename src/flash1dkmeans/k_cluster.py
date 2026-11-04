@@ -13,7 +13,7 @@ This is because this module is intended to be used internally.
 import numba
 from .utils import query_prefix_sum, set_np_seed_njit
 import numpy as np
-from .config import ARRAY_INDEX_DTYPE
+from .config import ARRAY_INDEX_DTYPE, PREFIX_SUM_DTYPE
 
 
 @numba.njit(cache=True)
@@ -29,7 +29,7 @@ def numba_kmeans_1d_k_cluster(
 ):
     """An optimized kmeans for 1D data with n clusters.
     Exploits the fact that the data is 1D to optimize the calculations.
-    Time complexity: O(k ^ 2 * log(k) * log(n) + i * log(n) * k)
+    Time complexity: O(k ^ 2 + k * log(k) * log(n) + i * log(n) * k)
 
     Args:
         sorted_X: np.ndarray
@@ -221,108 +221,87 @@ def _centroids_to_cluster_borders(X, sorted_centroids, start_idx, stop_idx):
 
 
 @numba.njit(cache=True)
-def _calculate_inertia(sorted_centroids, centroid_ranges,
-                       weights_prefix_sum, weighted_X_prefix_sum, weighted_X_squared_prefix_sum,
-                       stop_idx):
-    """Calculates the inertia of the clusters given the centroids.
-    The inertia is the sum of the squared distances of each sample to the closest centroid.
-    The calculations are done efficiently using prefix sums.
+def _cluster_inertia(centroid, start, end,
+                     weights_prefix_sum, weighted_X_prefix_sum, weighted_X_squared_prefix_sum):
+    """Calculates the inertia of the samples in the range [start, end) around a single centroid.
+    The calculation is done efficiently using prefix sums.
 
-    Time complexity: O(k)
+    Time complexity: O(1)
 
     Args:
-        sorted_centroids: np.ndarray
-            The centroids of the clusters
-        centroid_ranges: np.ndarray
-            The borders of the clusters
+        centroid: float
+            The centroid of the samples
+        start: int
+            The start index of the range
+        end: int
+            The stop index of the range
         weights_prefix_sum: np.ndarray
-            The prefix sum of the weights. Should be None if the data is unweighted.
+            The prefix sum of the weights
         weighted_X_prefix_sum: np.ndarray
             The prefix sum of the weighted X
         weighted_X_squared_prefix_sum: np.ndarray
             The prefix sum of the weighted X squared
-        stop_idx: int
-            The stop index of the range to consider
+
+    Returns:
+        float: The inertia of the range, 0 if the range is empty, never negative
     """
     # inertia = sigma_i(w_i * abs(x_i - c)^2) = sigma_i(w_i * (x_i^2 - 2 * x_i * c + c^2))
     #         = sigma_i(w_i * x_i^2) - 2 * c * sigma_i(w_i * x_i) + c^2 * sigma_i(w_i)
     #         = sigma_i(weighted_X_squared) - 2 * c * sigma_i(weighted_X) + c^2 * sigma_i(weight)
-    #  Note that the centroid c is the CLOSEST centroid to x_i, so the above calculation must be done for each cluster
+    if start == end:
+        return 0.0
 
-    inertia = 0
-    for i in range(len(sorted_centroids)):
-        start = centroid_ranges[i]
-        end = centroid_ranges[i + 1]
+    centroid = np.float64(centroid)  # for float32 data, centroid ** 2 would otherwise be rounded to float32
+    cluster_weighted_X_squared_sum = query_prefix_sum(weighted_X_squared_prefix_sum, start, end)
+    cluster_weighted_X_sum = query_prefix_sum(weighted_X_prefix_sum, start, end)
+    cluster_weight_sum = query_prefix_sum(weights_prefix_sum, start, end)
 
-        if start >= stop_idx:
-            break
-        if end >= stop_idx:
-            end = stop_idx
-
-        if start == end:
-            continue
-
-        cluster_weighted_X_squared_sum = query_prefix_sum(weighted_X_squared_prefix_sum, start, end)
-        cluster_weighted_X_sum = query_prefix_sum(weighted_X_prefix_sum, start, end)
-        cluster_weight_sum = query_prefix_sum(weights_prefix_sum, start, end)
-
-        inertia += (cluster_weighted_X_squared_sum - 2 * sorted_centroids[i] * cluster_weighted_X_sum +
-                    sorted_centroids[i] ** 2 * cluster_weight_sum)
-
-    return inertia
+    inertia = (cluster_weighted_X_squared_sum - 2 * centroid * cluster_weighted_X_sum +
+               centroid ** 2 * cluster_weight_sum)
+    # Cancellation can make the result slightly negative; clamping keeps the cumulative inertia non-decreasing
+    return max(inertia, 0.0)
 
 
 @numba.njit(cache=True)
-def _calculate_inertia_unweighted(sorted_centroids, centroid_ranges,
-                                  X_prefix_sum, X_squared_prefix_sum,
-                                  stop_idx):
-    """Unweighted version of _calculate_inertia"""
-    # inertia = sigma_i(w_i * abs(x_i - c)^2) = sigma_i(w_i * (x_i^2 - 2 * x_i * c + c^2))
-    #         = sigma_i(w_i * x_i^2) - 2 * c * sigma_i(w_i * x_i) + c^2 * sigma_i(w_i)
-    #         = sigma_i(weighted_X_squared) - 2 * c * sigma_i(weighted_X) + c^2 * sigma_i(weight)
-    #  Note that the centroid c is the CLOSEST centroid to x_i, so the above calculation must be done for each cluster
+def _cluster_inertia_unweighted(centroid, start, end, X_prefix_sum, X_squared_prefix_sum):
+    """Unweighted version of _cluster_inertia"""
+    if start == end:
+        return 0.0
 
-    inertia = 0
-    for i in range(len(sorted_centroids)):
-        start = centroid_ranges[i]
-        end = centroid_ranges[i + 1]
+    centroid = np.float64(centroid)
+    cluster_weighted_X_squared_sum = query_prefix_sum(X_squared_prefix_sum, start, end)
+    cluster_weighted_X_sum = query_prefix_sum(X_prefix_sum, start, end)
+    cluster_weight_sum = end - start
 
-        if start >= stop_idx:
-            break
-        if end >= stop_idx:
-            end = stop_idx
-
-        if start == end:
-            continue
-
-        cluster_weighted_X_squared_sum = query_prefix_sum(X_squared_prefix_sum, start, end)
-        cluster_weighted_X_sum = query_prefix_sum(X_prefix_sum, start, end)
-        cluster_weight_sum = end - start
-
-        inertia += (cluster_weighted_X_squared_sum - 2 * sorted_centroids[i] * cluster_weighted_X_sum +
-                    sorted_centroids[i] ** 2 * cluster_weight_sum)
-
-    return inertia
+    inertia = (cluster_weighted_X_squared_sum - 2 * centroid * cluster_weighted_X_sum +
+               centroid ** 2 * cluster_weight_sum)
+    return max(inertia, 0.0)
 
 
 @numba.njit(cache=True)
-def _rand_choice_centroids(X, centroids,
+def _rand_choice_centroids(X, sorted_centroids, cluster_borders, cumulative_inertia, n_centroids,
                            weights_prefix_sum, weighted_X_prefix_sum, weighted_X_squared_prefix_sum,
                            sample_size, start_idx, stop_idx):
     """Randomly choose sample_size elements from X, weighted by the distance to the closest centroid.
-    The weighted logic is implemented efficiently by utilizing the _calculate_inertia function.
+    Each element is the first one at which the inertia of the elements up to it reaches a random selector.
+    It is found in two binary searches: over the cumulative inertia of the clusters for the cluster containing it,
+    then over the inertia of the prefixes of that cluster.
 
-    Time complexity: O(l * k * log n)
+    Time complexity: O(l * (log k + log n))
 
     Args:
         X: np.ndarray
             The input data. Should be sorted in ascending order.
-        centroids: np.ndarray
-            The centroids of the clusters
-        is_weighted: bool
-            Whether the data is weighted. If True, the weighted versions of the arrays should be provided.
+        sorted_centroids: np.ndarray
+            The current centroids in ascending order, valid up to n_centroids
+        cluster_borders: np.ndarray
+            The borders of the clusters of the current centroids, valid up to n_centroids + 1
+        cumulative_inertia: np.ndarray
+            cumulative_inertia[i] is the inertia of clusters 0 to i - 1, valid up to n_centroids + 1
+        n_centroids: int
+            The number of current centroids
         weights_prefix_sum: np.ndarray
-            The prefix sum of the weights. Should be None if the data is unweighted.
+            The prefix sum of the weights
         weighted_X_prefix_sum: np.ndarray
             The prefix sum of the weighted X
         weighted_X_squared_prefix_sum: np.ndarray
@@ -337,24 +316,28 @@ def _rand_choice_centroids(X, centroids,
     Returns:
         np.ndarray: The chosen samples
     """
-    sorted_centroids = np.sort(centroids)  # O(k log k)
-    cluster_borders = _centroids_to_cluster_borders(X, sorted_centroids, start_idx, stop_idx)  # O(k log n)
-    total_inertia = _calculate_inertia(sorted_centroids, cluster_borders,  # O(k)
-                                       weights_prefix_sum, weighted_X_prefix_sum,
-                                       weighted_X_squared_prefix_sum, stop_idx)
+    total_inertia = cumulative_inertia[n_centroids]
     selectors = np.random.random_sample(sample_size) * total_inertia
-    results = np.empty(sample_size, dtype=centroids.dtype)
+    results = np.empty(sample_size, dtype=sorted_centroids.dtype)
 
-    for i in range(sample_size):  # O(l k log n)
+    for i in range(sample_size):  # O(l (log k + log n))
         selector = selectors[i]
-        floor = start_idx + 1
-        ceiling = stop_idx
+        # The first cluster j whose cumulative inertia cumulative_inertia[j + 1] reaches the selector. O(log k)
+        # The cumulative inertia is non-decreasing, so cluster j has positive inertia and is not empty,
+        # unless the selector is 0, in which case the first non-empty cluster is used.
+        j = np.searchsorted(cumulative_inertia[1:n_centroids + 1], selector)
+        while cluster_borders[j] == cluster_borders[j + 1]:
+            j += 1
+
+        # The first element of cluster j at which the inertia of the cluster up to it reaches the rest. O(log n)
+        rest = selector - cumulative_inertia[j]
+        floor = cluster_borders[j] + 1
+        ceiling = cluster_borders[j + 1]
         while floor < ceiling:
             stop_idx_cand = (floor + ceiling) // 2
-            inertia = _calculate_inertia(sorted_centroids, cluster_borders,  # O(k)
-                                         weights_prefix_sum, weighted_X_prefix_sum,
-                                         weighted_X_squared_prefix_sum, stop_idx_cand)
-            if inertia < selector:
+            inertia = _cluster_inertia(sorted_centroids[j], cluster_borders[j], stop_idx_cand,  # O(1)
+                                       weights_prefix_sum, weighted_X_prefix_sum, weighted_X_squared_prefix_sum)
+            if inertia < rest:
                 floor = stop_idx_cand + 1
             else:
                 ceiling = stop_idx_cand
@@ -364,33 +347,132 @@ def _rand_choice_centroids(X, centroids,
 
 
 @numba.njit(cache=True)
-def _rand_choice_centroids_unweighted(X, centroids,
-                                      X_prefix_sum,
-                                      X_squared_prefix_sum,
+def _rand_choice_centroids_unweighted(X, sorted_centroids, cluster_borders, cumulative_inertia, n_centroids,
+                                      X_prefix_sum, X_squared_prefix_sum,
                                       sample_size, start_idx, stop_idx):
     """Unweighted version of _rand_choice_centroids"""
-    sorted_centroids = np.sort(centroids)
-    cluster_borders = _centroids_to_cluster_borders(X, sorted_centroids, start_idx, stop_idx)
-    total_inertia = _calculate_inertia_unweighted(sorted_centroids, cluster_borders,
-                                                  X_prefix_sum, X_squared_prefix_sum, stop_idx)
+    total_inertia = cumulative_inertia[n_centroids]
     selectors = np.random.random_sample(sample_size) * total_inertia
-    results = np.empty(sample_size, dtype=centroids.dtype)
+    results = np.empty(sample_size, dtype=sorted_centroids.dtype)
 
     for i in range(sample_size):
         selector = selectors[i]
-        floor = start_idx + 1
-        ceiling = stop_idx
+        j = np.searchsorted(cumulative_inertia[1:n_centroids + 1], selector)
+        while cluster_borders[j] == cluster_borders[j + 1]:
+            j += 1
+
+        rest = selector - cumulative_inertia[j]
+        floor = cluster_borders[j] + 1
+        ceiling = cluster_borders[j + 1]
         while floor < ceiling:
             stop_idx_cand = (floor + ceiling) // 2
-            inertia = _calculate_inertia_unweighted(sorted_centroids, cluster_borders,
-                                                    X_prefix_sum, X_squared_prefix_sum, stop_idx_cand)
-            if inertia < selector:
+            inertia = _cluster_inertia_unweighted(sorted_centroids[j], cluster_borders[j], stop_idx_cand,
+                                                  X_prefix_sum, X_squared_prefix_sum)
+            if inertia < rest:
                 floor = stop_idx_cand + 1
             else:
                 ceiling = stop_idx_cand
         results[i] = X[floor - 1]
 
     return results
+
+
+@numba.njit(cache=True)
+def _insertion_borders(X, sorted_centroids, n_centroids, centroid, start_idx, stop_idx):
+    """Finds the sorted position of a new centroid, and the borders of its cluster.
+    Inserting a centroid between its two neighbouring centroids only replaces the border between the neighbours
+    with two new borders, one on each side of the new centroid. All other borders stay the same.
+
+    Time complexity: O(log k + log n)
+
+    Args:
+        X: np.ndarray
+            The input data. Should be sorted in ascending order.
+        sorted_centroids: np.ndarray
+            The current centroids in ascending order, valid up to n_centroids
+        n_centroids: int
+            The number of current centroids
+        centroid: float
+            The new centroid
+        start_idx: int
+            The start index of the range to consider
+        stop_idx: int
+            The stop index of the range to consider
+
+    Returns:
+        pos: int
+            The index of the new centroid in the sorted centroids after insertion
+        left_border: int
+            The start index of the new centroid's cluster
+        right_border: int
+            The stop index of the new centroid's cluster
+    """
+    pos = np.searchsorted(sorted_centroids[:n_centroids], centroid)  # O(log k)
+
+    if pos > 0:  # O(log n)
+        midpoint = (sorted_centroids[pos - 1] + centroid) / 2
+        left_border = np.searchsorted(X[start_idx:stop_idx], midpoint) + start_idx
+    else:
+        left_border = start_idx
+
+    if pos < n_centroids:  # O(log n)
+        midpoint = (centroid + sorted_centroids[pos]) / 2
+        right_border = np.searchsorted(X[start_idx:stop_idx], midpoint) + start_idx
+    else:
+        right_border = stop_idx
+
+    return pos, left_border, right_border
+
+
+@numba.njit(cache=True)
+def _insert_centroid(sorted_centroids, cluster_borders, cluster_inertia, cumulative_inertia, n_centroids,
+                     pos, centroid, left_border, right_border,
+                     left_inertia, inertia, right_inertia):
+    """Inserts a new centroid at its sorted position, updating the cluster borders and inertias in place.
+    The cluster inertias of the left and right neighbours, if any, are replaced by left_inertia and right_inertia.
+
+    Time complexity: O(k)
+
+    Args:
+        sorted_centroids: np.ndarray
+            The current centroids in ascending order, valid up to n_centroids
+        cluster_borders: np.ndarray
+            The borders of the clusters of the current centroids, valid up to n_centroids + 1
+        cluster_inertia: np.ndarray
+            The inertia of each cluster, valid up to n_centroids
+        cumulative_inertia: np.ndarray
+            cumulative_inertia[i] is the inertia of clusters 0 to i - 1, valid up to n_centroids + 1
+        n_centroids: int
+            The number of current centroids, before insertion
+        pos, left_border, right_border:
+            The return values of _insertion_borders for the new centroid
+        centroid: float
+            The new centroid
+        left_inertia: float
+            The new inertia of the left neighbour's cluster
+        inertia: float
+            The inertia of the new centroid's cluster
+        right_inertia: float
+            The new inertia of the right neighbour's cluster
+    """
+    # Shift everything right of the insertion point by one
+    for i in range(n_centroids, pos, -1):
+        sorted_centroids[i] = sorted_centroids[i - 1]
+        cluster_inertia[i] = cluster_inertia[i - 1]
+        cluster_borders[i + 1] = cluster_borders[i]
+
+    sorted_centroids[pos] = centroid
+    cluster_inertia[pos] = inertia
+    cluster_borders[pos] = left_border  # equals start_idx if pos == 0
+    cluster_borders[pos + 1] = right_border  # equals stop_idx if pos == n_centroids
+    if pos > 0:
+        cluster_inertia[pos - 1] = left_inertia
+    if pos < n_centroids:
+        cluster_inertia[pos + 1] = right_inertia
+
+    # Update the cumulative inertia from the first changed cluster, summing from left to right
+    for i in range(max(pos - 1, 0), n_centroids + 1):
+        cumulative_inertia[i + 1] = cumulative_inertia[i] + cluster_inertia[i]
 
 
 @numba.njit(cache=True)
@@ -400,7 +482,11 @@ def _kmeans_plusplus(X, n_clusters,
     """An optimized version of the kmeans++ initialization algorithm for 1D data.
     The algorithm is optimized for 1D data and utilizes prefix sums for efficient calculations.
 
-    Time complexity: = O(k ^ 2 * log k * log n)
+    The sorted centroids, cluster borders and cluster inertias are kept up to date as centroids are added.
+    A candidate centroid only changes the clusters of its two neighbouring centroids,
+    so each candidate is evaluated by the change in inertia of those clusters.
+
+    Time complexity: O(k ^ 2 + k * l * (log k + log n)) = O(k ^ 2 + k * log k * log n), with l = 2 + log k local trials
 
     Args:
         X: np.ndarray
@@ -420,34 +506,72 @@ def _kmeans_plusplus(X, n_clusters,
     centroids = np.empty(n_clusters, dtype=X.dtype)
     n_local_trials = 2 + int(np.log(n_clusters))
 
+    # The chosen centroids in ascending order, their cluster borders and the inertia of each cluster
+    sorted_centroids = np.empty(n_clusters, dtype=X.dtype)
+    cluster_borders = np.empty(n_clusters + 1, dtype=ARRAY_INDEX_DTYPE)
+    cluster_inertia = np.empty(n_clusters, dtype=PREFIX_SUM_DTYPE)
+    # cumulative_inertia[i] is the inertia of clusters 0 to i - 1
+    cumulative_inertia = np.empty(n_clusters + 1, dtype=PREFIX_SUM_DTYPE)
+
     # First centroid is chosen randomly according to sample_weight
     centroids[0] = _rand_choice_prefix_sum(X, weights_prefix_sum, start_idx, stop_idx)  # O(log n)
 
-    for c_id in range(1, n_clusters):  # O(k^2 l log n)
+    sorted_centroids[0] = centroids[0]
+    cluster_borders[0] = start_idx
+    cluster_borders[1] = stop_idx
+    cluster_inertia[0] = _cluster_inertia(centroids[0], start_idx, stop_idx,
+                                          weights_prefix_sum, weighted_X_prefix_sum, weighted_X_squared_prefix_sum)
+    cumulative_inertia[0] = 0.0
+    cumulative_inertia[1] = cluster_inertia[0]
+
+    for c_id in range(1, n_clusters):  # O(k^2 + k l (log k + log n))
         # Choose the next centroid randomly according to the weighted distances
         # Sample n_local_trials candidates and choose the best one
 
-        centroid_candidates = _rand_choice_centroids(  # O(l k log n)
-            X, centroids[:c_id],
+        centroid_candidates = _rand_choice_centroids(  # O(l (log k + log n))
+            X, sorted_centroids, cluster_borders, cumulative_inertia, c_id,
             weights_prefix_sum, weighted_X_prefix_sum,
             weighted_X_squared_prefix_sum, n_local_trials,
             start_idx, stop_idx
         )
 
-        best_inertia = np.inf
+        best_inertia_change = np.inf
         best_centroid = None
-        for i in range(len(centroid_candidates)): # O(l k log n)
-            # O(k log k + k log n + k) = O(k log n), as k <= n
-            centroids[c_id] = centroid_candidates[i]
-            sorted_centroids = np.sort(centroids[:c_id + 1]) # O(k log k), I think we could avoid centroid sorting and use some linear algorithm, but the gain would be minimal, especially considering that k <= n, and most times k << n
-            centroid_ranges = _centroids_to_cluster_borders(X, sorted_centroids, start_idx, stop_idx)  # O(k log n)
-            inertia = _calculate_inertia(sorted_centroids, centroid_ranges,  # O(k)
-                                         weights_prefix_sum, weighted_X_prefix_sum,
-                                         weighted_X_squared_prefix_sum, stop_idx)
-            if inertia < best_inertia:
-                best_inertia = inertia
-                best_centroid = centroid_candidates[i]
+        best_pos, best_left_border, best_right_border = 0, 0, 0
+        best_left_inertia, best_inertia, best_right_inertia = 0.0, 0.0, 0.0
+        for i in range(len(centroid_candidates)):  # O(l (log k + log n))
+            candidate = centroid_candidates[i]
+            pos, left_border, right_border = _insertion_borders(  # O(log k + log n)
+                X, sorted_centroids, c_id, candidate, start_idx, stop_idx)
+
+            # Inertia of the candidate's cluster and of the neighbouring clusters it takes samples from
+            inertia = _cluster_inertia(candidate, left_border, right_border,
+                                       weights_prefix_sum, weighted_X_prefix_sum, weighted_X_squared_prefix_sum)
+            inertia_change = inertia
+            left_inertia, right_inertia = 0.0, 0.0
+            if pos > 0:
+                left_inertia = _cluster_inertia(sorted_centroids[pos - 1], cluster_borders[pos - 1], left_border,
+                                                weights_prefix_sum, weighted_X_prefix_sum,
+                                                weighted_X_squared_prefix_sum)
+                inertia_change += left_inertia - cluster_inertia[pos - 1]
+            if pos < c_id:
+                right_inertia = _cluster_inertia(sorted_centroids[pos], right_border, cluster_borders[pos + 1],
+                                                 weights_prefix_sum, weighted_X_prefix_sum,
+                                                 weighted_X_squared_prefix_sum)
+                inertia_change += right_inertia - cluster_inertia[pos]
+
+            if inertia_change < best_inertia_change:
+                best_inertia_change = inertia_change
+                best_centroid = candidate
+                best_pos, best_left_border, best_right_border = pos, left_border, right_border
+                best_left_inertia, best_inertia, best_right_inertia = left_inertia, inertia, right_inertia
         centroids[c_id] = best_centroid
+
+        _insert_centroid(  # O(k)
+            sorted_centroids, cluster_borders, cluster_inertia, cumulative_inertia, c_id,
+            best_pos, centroids[c_id], best_left_border, best_right_border,
+            best_left_inertia, best_inertia, best_right_inertia
+        )
 
     return centroids
 
@@ -460,29 +584,65 @@ def _kmeans_plusplus_unweighted(X, n_clusters,
     centroids = np.empty(n_clusters, dtype=X.dtype)
     n_local_trials = 2 + int(np.log(n_clusters))
 
+    sorted_centroids = np.empty(n_clusters, dtype=X.dtype)
+    cluster_borders = np.empty(n_clusters + 1, dtype=ARRAY_INDEX_DTYPE)
+    cluster_inertia = np.empty(n_clusters, dtype=PREFIX_SUM_DTYPE)
+    cumulative_inertia = np.empty(n_clusters + 1, dtype=PREFIX_SUM_DTYPE)
+
     # First centroid is chosen randomly according to sample_weight
     centroids[0] = X[np.random.randint(start_idx, stop_idx)]
+
+    sorted_centroids[0] = centroids[0]
+    cluster_borders[0] = start_idx
+    cluster_borders[1] = stop_idx
+    cluster_inertia[0] = _cluster_inertia_unweighted(centroids[0], start_idx, stop_idx,
+                                                     X_prefix_sum, X_squared_prefix_sum)
+    cumulative_inertia[0] = 0.0
+    cumulative_inertia[1] = cluster_inertia[0]
 
     for c_id in range(1, n_clusters):
         # Choose the next centroid randomly according to the weighted distances
         # Sample n_local_trials candidates and choose the best one
         centroid_candidates = _rand_choice_centroids_unweighted(
-            X, centroids[:c_id], X_prefix_sum,
-            X_squared_prefix_sum, n_local_trials,
+            X, sorted_centroids, cluster_borders, cumulative_inertia, c_id,
+            X_prefix_sum, X_squared_prefix_sum, n_local_trials,
             start_idx, stop_idx
         )
 
-        best_inertia = np.inf
+        best_inertia_change = np.inf
         best_centroid = None
+        best_pos, best_left_border, best_right_border = 0, 0, 0
+        best_left_inertia, best_inertia, best_right_inertia = 0.0, 0.0, 0.0
         for i in range(len(centroid_candidates)):
-            centroids[c_id] = centroid_candidates[i]
-            sorted_centroids = np.sort(centroids[:c_id + 1])
-            centroid_ranges = _centroids_to_cluster_borders(X, sorted_centroids, start_idx, stop_idx)
-            inertia = _calculate_inertia_unweighted(sorted_centroids, centroid_ranges,
-                                                    X_prefix_sum, X_squared_prefix_sum, stop_idx)
-            if inertia < best_inertia:
-                best_inertia = inertia
-                best_centroid = centroid_candidates[i]
+            candidate = centroid_candidates[i]
+            pos, left_border, right_border = _insertion_borders(
+                X, sorted_centroids, c_id, candidate, start_idx, stop_idx)
+
+            inertia = _cluster_inertia_unweighted(candidate, left_border, right_border,
+                                                  X_prefix_sum, X_squared_prefix_sum)
+            inertia_change = inertia
+            left_inertia, right_inertia = 0.0, 0.0
+            if pos > 0:
+                left_inertia = _cluster_inertia_unweighted(sorted_centroids[pos - 1], cluster_borders[pos - 1],
+                                                           left_border, X_prefix_sum, X_squared_prefix_sum)
+                inertia_change += left_inertia - cluster_inertia[pos - 1]
+            if pos < c_id:
+                right_inertia = _cluster_inertia_unweighted(sorted_centroids[pos], right_border,
+                                                            cluster_borders[pos + 1],
+                                                            X_prefix_sum, X_squared_prefix_sum)
+                inertia_change += right_inertia - cluster_inertia[pos]
+
+            if inertia_change < best_inertia_change:
+                best_inertia_change = inertia_change
+                best_centroid = candidate
+                best_pos, best_left_border, best_right_border = pos, left_border, right_border
+                best_left_inertia, best_inertia, best_right_inertia = left_inertia, inertia, right_inertia
         centroids[c_id] = best_centroid
+
+        _insert_centroid(
+            sorted_centroids, cluster_borders, cluster_inertia, cumulative_inertia, c_id,
+            best_pos, centroids[c_id], best_left_border, best_right_border,
+            best_left_inertia, best_inertia, best_right_inertia
+        )
 
     return centroids
